@@ -35,7 +35,7 @@ async def register_link(ctx, server_url: str):
     discord_id = ctx.author.id
     cursor.execute("REPLACE INTO user_links (discord_id, server_url) VALUES (?, ?)", (discord_id, server_url))
     conn.commit()
-    await ctx.send(f"✅ 성공적으로 연동되었습니다, {ctx.author.mention}님! 이제 감지된 알림에 회원님의 서버 링크가 연결됩니다.")
+    await ctx.send(f"✅ 성공적으로 연동되었습니다, {ctx.author.mention}님, 연동 감사합니다!")
 
 # 4. [신규] 매크로 알림이 올라오는 방에서 치면 그 방이 자동으로 원본 채널로 등록되는 명령어
 @bot.command(name="채널등록") # 관리자만 사용 가능하게 설정
@@ -43,7 +43,7 @@ async def set_source_channel(ctx):
     channel_id = str(ctx.channel.id)
     cursor.execute("REPLACE INTO config (key, value) VALUES ('source_channel_id', ?)", (channel_id,))
     conn.commit()
-    await ctx.send(f"✅ 이 채널({ctx.channel.mention})이 바이옴 매크로 감지 원본 채널로 자동 등록되었습니다!")
+    await ctx.send(f"[✅] 채널 ({ctx.channel.mention})이 바이옴 매크로 감지 채널로 자동 등록되었습니다!")
 
 # 결과를 보낼 타겟 채널 ID
 TARGET_CHANNEL_ID = 1573193709527375942  # 예쁘게 가공해서 보낼 최종 채널 ID
@@ -64,12 +64,20 @@ async def on_message(message):
     if source_channel_id and message.channel.id == source_channel_id and message.embeds:
         embed = message.embeds[0]
         
-        # 원본 제목에서 바이옴 이름 추출
+                # 원본 제목과 본문에서 바이옴 이름 추출
         original_title = embed.title if embed.title else ""
-        if "-" in original_title:
-            biome_name = original_title.split("-")[-1].strip()
+        original_desc = embed.description if embed.description else ""
+        
+        # 제목이 'Join Private Server'이거나 비어있으면 본문에서 추출
+        target_text = original_desc if ("Join Private Server" in original_title or not original_title) else original_title
+        
+        if "-" in target_text:
+            biome_name = target_text.split("-")[-1].strip()
+        elif ":" in target_text:
+            biome_name = target_text.split(":")[-1].strip()
         else:
-            biome_name = original_title
+            biome_name = target_text if target_text else "알 수 없는 바이옴"
+
 
         matched_user_id = message.author.id 
         
