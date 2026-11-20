@@ -1,124 +1,145 @@
-import os
 import discord
 from discord.ext import commands
 import sqlite3
+import re
+import os
 
-# 1. 인텐트 설정
+# 디스코드 인텐트 설정 (메시지 내용 읽기 필수)
 intents = discord.Intents.default()
 intents.message_content = True
+intents.messages = True
+intents.guilds = True
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# 2. 데이터베이스 설정 (유저 링크 + 감지할 원본 채널 ID 저장용 테이블 생성)
-conn = sqlite3.connect("user_servers.db")
+# SQLite 데이터베이스 연결 (파일 기반)
+conn = sqlite3.connect("bot_database.db", check_same_thread=False)
 cursor = conn.cursor()
-cursor.execute('''
+
+# 테이블 자동 생성 (최초 실행 시)
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS source_channel (
+        channel_id TEXT
+    )
+""")
+cursor.execute("""
     CREATE TABLE IF NOT EXISTS user_links (
-        discord_id INTEGER PRIMARY KEY,
+        discord_id INTEGER,
+        roblox_name TEXT,
         server_url TEXT
     )
-''')
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS config (
-        key TEXT PRIMARY KEY,
-        value TEXT
-    )
-''')
+""")
 conn.commit()
 
 @bot.event
 async def on_ready():
-    print(f"로그인 완료: {bot.user.name} (봇이 정상 작동 중입니다)")
+    print(f"로그인 완료: {bot.user.name} (ID: {bot.user.id})")
+    print("----------------------------------------")
 
-# 3. 사용자가 자신의 서버 링크를 등록하는 명령어 (예: !링크등록 https://discord.gg/...)
-@bot.command(name="링크등록")
-async def register_link(ctx, server_url: str):
-    discord_id = ctx.author.id
-    cursor.execute("REPLACE INTO user_links (discord_id, server_url) VALUES (?, ?)", (discord_id, server_url))
-    conn.commit()
-    await ctx.send(f"✅ 성공적으로 연동되었습니다, {ctx.author.mention}님, 연동 감사합니다!")
-
-# 4. [신규] 매크로 알림이 올라오는 방에서 치면 그 방이 자동으로 원본 채널로 등록되는 명령어
-@bot.command(name="채널등록") # 관리자만 사용 가능하게 설정
-async def set_source_channel(ctx):
+# 1. 원본 감지 채널 등록 명령어 (관리자 전용)
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def 채널등록(ctx):
     channel_id = str(ctx.channel.id)
-    cursor.execute("REPLACE INTO config (key, value) VALUES ('source_channel_id', ?)", (channel_id,))
+    cursor.execute("DELETE FROM source_channel")
+    cursor.execute("INSERT INTO source_channel (channel_id) VALUES (?)", (channel_id,))
     conn.commit()
-    await ctx.send(f"[✅] 채널 ({ctx.channel.mention})이 바이옴 매크로 감지 채널로 자동 등록되었습니다!")
+    await ctx.send(f"✅ 이 채널({ctx.channel.mention})이 매크로 감지 원본 채널로 등록되었습니다!")
 
-# 결과를 보낼 타겟 채널 ID
-TARGET_CHANNEL_ID = 1573193709527375942  # 예쁘게 가공해서 보낼 최종 채널 ID
+# 2. 비공개 서버 링크 등록 명령어 (누구나 사용 가능)
+# 사용법: !링크등록 [로블록스닉네임] [비공개서버링크]
+@bot.command()
+async def 링크등록(ctx, roblox_name: str, url: str):
+    discord_id = ctx.author.id
+    
+    # 이미 등록된 유저라면 정보 업데이트, 아니면 새로 추가
+    cursor.execute("SELECT * FROM user_links WHERE discord_id = ?", (discord_id,))
+    if cursor.fetchone():
+        cursor.execute("UPDATE user_links SET roblox_name = ?, server_url = ? WHERE discord_id = ?", (roblox_name, url, discord_id))
+    else:
+        cursor.execute("INSERT INTO user_links (discord_id, roblox_name, server_url) VALUES (?, ?, ?)", (discord_id, roblox_name, url))
+    conn.commit()
+    
+    await ctx.send(f"✅ **{roblox_name}**님의 비공개 서버 링크가 성공적으로 등록되었습니다!")
 
-# 5. 메시지 감지 및 재가공 전송 로직
+# 3. 메시지 감지 및 바이옴 처리 이벤트
 @bot.event
 async def on_message(message):
-    # 봇 자신의 메시지는 무시
+    # 봇 자신의 메시지는 무한 루프 방지를 위해 무시
     if message.author == bot.user:
+        await bot.process_commands(message)
         return
 
-    # 데이터베이스에서 등록된 원본 채널 ID 가져오기
-    cursor.execute("SELECT value FROM config WHERE key = 'source_channel_id'")
+    # 원본 채널 ID 조회
+    cursor.execute("SELECT channel_id FROM source_channel LIMIT 1")
     row = cursor.fetchone()
     source_channel_id = int(row[0]) if row else None
 
-    # 등록된 원본 채널이 존재하고, 그 채널에서 올라온 메시지이며, 임베드가 포함된 경우
-    if source_channel_id and message.channel.id == source_channel_id and message.embeds:
-        embed = message.embeds[0]
+    # 원본 채널일 경우 처리 (일반 메시지 & 임베드 통합 스캔)
+    if source_channel_id and message.channel.id == source_channel_id:
         
-                # 원본 제목과 본문에서 바이옴 이름 추출
-        original_title = embed.title if embed.title else ""
-        original_desc = embed.description if embed.description else ""
+        # 임베드 내용과 일반 텍스트(message.content)를 모두 합쳐서 분석 텍스트 생성
+        embed_texts = []
+        for embed in message.embeds:
+            t = embed.title if embed.title else ""
+            d = embed.description if embed.description else ""
+            f = "".join([f"\n{field.name}: {field.value}" for field in embed.fields])
+            embed_texts.append(f"{t}\n{d}\n{f}")
         
-        # 제목이 'Join Private Server'이거나 비어있으면 본문에서 추출
-        target_text = original_desc if ("Join Private Server" in original_title or not original_title) else original_title
-        
-        if "-" in target_text:
-            biome_name = target_text.split("-")[-1].strip()
-        elif ":" in target_text:
-            biome_name = target_text.split(":")[-1].strip()
-        else:
-            biome_name = target_text if target_text else "알 수 없는 바이옴"
+        full_text = f"{message.content}\n" + "\n".join(embed_texts)
 
+        # Ended 알림은 완전히 무시하고, Started 알림만 허용
+        if "Ended" in full_text or "Started" not in full_text:
+            await bot.process_commands(message)
+            return
 
-        matched_user_id = message.author.id 
-        
-        # 데이터베이스에서 해당 유저가 등록한 프라이빗 서버 링크 조회
-        cursor.execute("SELECT server_url FROM user_links WHERE discord_id = ?", (matched_user_id,))
-        result = cursor.fetchone()
-        
-        user_private_url = result[0] if result else "https://discord.gg/기본링크"
+        # 바이옴 이름 추출 ('Biome Started - [바이옴이름]')
+        biome_name = "알 수 없는 바이옴"
+        if "Biome Started -" in full_text:
+            biome_name = full_text.split("Biome Started -")[-1].split("\n")[0].strip()
 
-        # 한국어로 변경된 새로운 임베드 생성
+        # 계정 이름(로블록스 닉네임) 추출 ('Account: 닉네임')
+        account_match = re.search(r"Account[:\s]+\*\*([^*]+)\*\*", full_text)
+        if not account_match:
+            account_match = re.search(r"Account[:\s]+([^\n]+)", full_text)
+        
+        roblox_username = account_match.group(1).strip() if account_match else None
+
+        # 데이터베이스에서 해당 유저의 링크 조회 (없으면 기본 링크)
+        user_private_url = "https://discord.gg/기본링크"
+        if roblox_username:
+            cursor.execute("SELECT server_url FROM user_links WHERE roblox_name = ?", (roblox_username,))
+            result = cursor.fetchone()
+            if result:
+                user_private_url = result[0]
+
+        # 새로운 임베드 생성 (Started 감지 시에만 작동)
         new_embed = discord.Embed(
-            title=f"🌲 바이옴: {biome_name}",
+            title=f"🌲 바이옴 시작: {biome_name}",
             color=discord.Color.from_rgb(0, 162, 255)
         )
-        new_embed.add_field(name="서버 주인", value=f"<@{matched_user_id}>", inline=False)
+        new_embed.add_field(name="서버 주인", value=f"**{roblox_username if roblox_username else '알 수 없음'}**", inline=False)
         new_embed.add_field(name="바이옴 감지 시간", value="방금 전", inline=True)
-        
-        # 유저 고유의 Join 버튼 생성 클래스
+
+        # 유저 고유의 Join 버튼 클래스
         class CustomJoinView(discord.ui.View):
             def __init__(self):
-                super().__init__()
+                super().__init__(timeout=None)
                 self.add_item(discord.ui.Button(
                     label="Join Server",
-                    style=discord.ButtonStyle.link,
-                    url=user_private_url
+                    url=user_private_url,
+                    style=discord.ButtonStyle.link
                 ))
 
-        # 최종 목적지 채널로 임베드와 버튼 전송
-        target_channel = bot.get_channel(TARGET_CHANNEL_ID)
-        if target_channel:
-            # @가 포함된 올바른 역할 멘션 형식
-            role_mention = "<@&1569903836867596419>" 
-            
-            await target_channel.send(
-                content=role_mention, 
-                embed=new_embed, 
-                view=CustomJoinView()
-            )
+        # 감지된 채널에 결과 전송
+        await message.channel.send(embed=new_embed, view=CustomJoinView())
 
-    # 💡 on_message 함수 내부에 알맞게 들여쓰기된 명령어 프로세서
+    # 디스코드 명령어(!채널등록, !링크등록 등)가 정상 작동하도록 처리
     await bot.process_commands(message)
 
-# 6. 봇 실행 토큰 입력 (환경 변수 사용으로 보안 경고 해결)
-bot.run(os.environ.get("DISCORD_TOKEN"))
+# 봇 실행 (레일웨이 환경변수에서 토큰 가져오기)
+TOKEN = os.getenv("DISCORD_TOKEN")
+if TOKEN:
+    bot.run(TOKEN)
+else:
+    print("❌ 오류: DISCORD_TOKEN 환경 변수가 설정되지 않았습니다.")
