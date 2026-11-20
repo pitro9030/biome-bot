@@ -16,12 +16,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 conn = sqlite3.connect("bot_database.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# 테이블 자동 생성
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS source_channels (
-        channel_id TEXT UNIQUE
-    )
-""")
+# 테이블 자동 생성 (출력방, 유저 링크)
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS output_channel (
         channel_id TEXT
@@ -36,22 +31,21 @@ cursor.execute("""
 """)
 conn.commit()
 
+# 💡 감지할 채널 ID들을 기억할 메모리 리스트 (DB 오류 원천 차단)
+SOURCE_CHANNELS = set()
+
 @bot.event
 async def on_ready():
     print(f"로그인 완료: {bot.user.name} (ID: {bot.user.id})")
     print("----------------------------------------")
 
-# 1. 감지할 원본 채널들 등록 (1r, 2r, 3r 등 여러 개 가능)
+# 1. 감지할 원본 채널 등록 (1r, 2r, reis0na 등 여러 개 등록 가능)
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def 채널등록(ctx):
     channel_id = str(ctx.channel.id)
-    try:
-        cursor.execute("INSERT INTO source_channels (channel_id) VALUES (?)", (channel_id,))
-        conn.commit()
-        await ctx.send(f"✅ 이 채널({ctx.channel.mention})이 **매크로 감지 채널**로 추가되었습니다!")
-    except sqlite3.IntegrityError:
-        await ctx.send(f"⚠️ 이미 감지 채널로 등록되어 있는 방입니다!")
+    SOURCE_CHANNELS.add(channel_id)
+    await ctx.send(f"✅ 이 채널({ctx.channel.mention})이 **매크로 감지 채널**로 즉시 등록되었습니다! (현재 감지 중인 채널 수: {len(SOURCE_CHANNELS)}개)")
 
 # 2. 최종 출력방 등록 (단 하나의 방)
 @bot.command()
@@ -76,7 +70,7 @@ async def 링크등록(ctx, roblox_name: str, url: str):
     
     await ctx.send(f"✅ **{roblox_name}**님의 비공개 서버 링크가 성공적으로 등록되었습니다!")
 
-# 4. 실시간 메시지 자동 감지 및 정확한 바이옴 추출 이벤트
+# 4. 실시간 메시지 자동 감지 및 바이옴 추출 이벤트
 @bot.event
 async def on_message(message):
     # 봇 자신의 메시지는 무한 루프 방지를 위해 무시
@@ -84,15 +78,12 @@ async def on_message(message):
         await bot.process_commands(message)
         return
 
-    # 등록된 감지 채널 목록 불러오기
-    cursor.execute("SELECT channel_id FROM source_channels")
-    source_rows = cursor.fetchall()
-    source_channel_ids = [row[0] for row in source_rows]
+    channel_id_str = str(message.channel.id)
 
-    # 등록된 소스 채널 중 한 곳에서 메시지가 올라온 경우
-    if source_channel_ids and str(message.channel.id) in source_channel_ids:
+    # 등록된 감지 채널 중 하나인지 확인
+    if channel_id_str in SOURCE_CHANNELS:
         
-        # 메시지 내용, 임베드 타이틀, 설명, 필드, URL을 전부 텍스트로 결합하여 분석 준비
+        # 메시지 내용, 임베드 타이틀, 설명, 필드, URL 결합
         embed_texts = []
         for embed in message.embeds:
             t = embed.title if embed.title else ""
@@ -108,13 +99,12 @@ async def on_message(message):
             await bot.process_commands(message)
             return
 
-        # 🔍 [핵심 수정] 'Biome Started - [바이옴명]' 문구 뒤의 실제 바이옴 이름만 정확하게 정규식으로 추출
+        # 🔍 'Biome Started - [바이옴명]' 형태에서 바이옴 이름 추출
         biome_name = None
         match = re.search(r"Biome\s+Started\s*-\s*([^\n\r]+)", full_text, re.IGNORECASE)
         if match:
             biome_name = match.group(1).strip()
         else:
-            # 예비 분할 방식
             if "Biome Started -" in full_text:
                 parts = full_text.split("Biome Started -")
                 if len(parts) > 1:
@@ -130,7 +120,7 @@ async def on_message(message):
         
         roblox_username = account_match.group(1).strip() if account_match else None
 
-        # 데이터베이스에서 해당 유저의 비공개 서버 링크 조회 (없으면 기본 안내 링크)
+        # 데이터베이스에서 해당 유저의 비공개 서버 링크 조회
         user_private_url = "https://discord.gg/기본링크"
         if roblox_username:
             cursor.execute("SELECT server_url FROM user_links WHERE roblox_name = ?", (roblox_username,))
@@ -138,7 +128,7 @@ async def on_message(message):
             if result:
                 user_private_url = result[0]
 
-        # 🌲 원하시는 대로 정확히 "Biome Started - [바이옴이름]" 형태로 타이틀 생성
+        # 🌲 결과 임베드 생성
         new_embed = discord.Embed(
             title=f"Biome Started - {biome_name}",
             color=discord.Color.from_rgb(0, 162, 255)
