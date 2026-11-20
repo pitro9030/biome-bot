@@ -38,8 +38,7 @@ async def register_link(ctx, server_url: str):
     await ctx.send(f"✅ 성공적으로 연동되었습니다, {ctx.author.mention}님! 이제 감지된 알림에 회원님의 서버 링크가 연결됩니다.")
 
 # 4. [신규] 매크로 알림이 올라오는 방에서 치면 그 방이 자동으로 원본 채널로 등록되는 명령어
-@bot.command(name="채널등록")
-@commands.has_permissions(administrator=True) # 관리자만 사용 가능하게 설정
+@bot.command(name="채널등록") # 관리자만 사용 가능하게 설정
 async def set_source_channel(ctx):
     channel_id = str(ctx.channel.id)
     cursor.execute("REPLACE INTO config (key, value) VALUES ('source_channel_id', ?)", (channel_id,))
