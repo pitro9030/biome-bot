@@ -4,6 +4,7 @@ from discord import app_commands
 import sqlite3
 import re
 import os
+import aiohttp
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -235,6 +236,12 @@ def extract_all_text(message) -> str:
 
     return "\n".join(parts)
 
+async def get_or_create_webhook(channel):
+    webhooks = await channel.webhooks()
+    if webhooks:
+        return webhooks[0]
+    return await channel.create_webhook(name="Macro Tracker Webhook")
+
 async def process_macro_message(message):
     if message.author == bot.user:
         return
@@ -256,20 +263,14 @@ async def process_macro_message(message):
             try:
                 if sent_msg.embeds:
                     old_embed = sent_msg.embeds[0]
-                    old_desc = old_embed.description
+                    new_embed = discord.Embed.from_dict(old_embed.to_dict())
                     
-                    if "(사라짐)" not in old_desc:
-                        new_desc = re.sub(r"(감지 시간:\s*<t:\d+:R>)", r"\1 (사라짐)", old_desc)
-                        if "(사라짐)" not in new_desc:
-                            new_desc = re.sub(r"감지 시간:.*", "감지 시간: (사라짐)", old_desc)
-                    else:
-                        new_desc = old_desc
-                    
-                    new_embed = discord.Embed(
-                        title=f"{old_embed.title}",
-                        description=new_desc,
-                        color=old_embed.color
-                    )
+                    for i, field in enumerate(new_embed.fields):
+                        if "감지 시간" in field.name:
+                            if "(사라짐)" not in field.value:
+                                new_val = f"{field.value} (사라짐)"
+                                new_embed.set_field_at(i, name=field.name, value=new_val, inline=False)
+
                     await sent_msg.edit(content=sent_msg.content, embed=new_embed)
             except Exception as e:
                 print(f"메시지 수정 중 오류 발생: {e}")
@@ -310,7 +311,6 @@ async def process_macro_message(message):
 
     mention_text = f"<@&{role_to_mention}>" if role_to_mention and role_to_mention.isdigit() else ""
 
-    # 💡 가장 최근에 /링크등록을 마친 유저의 정보를 가져와서 멘션으로 매칭
     user_private_url = "https://discord.gg/기본링크"
     owner_display = "@알수없는-사용자"
 
@@ -335,18 +335,13 @@ async def process_macro_message(message):
     msg_timestamp = int(message.created_at.timestamp())
     dynamic_time_str = f"<t:{msg_timestamp}:R>"
 
-    # 💡 [핵심 수정] 필드(fields)를 아예 쓰지 않고 description에만 담아 원본처럼 콤팩트한 박스 형태로 출력
-    embed_description = (
-        f"유저: {owner_display}\n"
-        f"감지 시간: {dynamic_time_str}\n"
-        f"서버 시간: {session_duration}"
-    )
-
     new_embed = discord.Embed(
         title=f"{biome_name}",
-        description=embed_description,
         color=embed_color
     )
+    new_embed.add_field(name="유저", value=owner_display, inline=False)
+    new_embed.add_field(name="감지 시간", value=dynamic_time_str, inline=False)
+    new_embed.add_field(name="서버 시간", value=session_duration, inline=False)
 
     view = BiomeControlView(user_private_url)
 
@@ -369,7 +364,15 @@ async def process_macro_message(message):
             target_channel = bot.get_channel(int(output_row[0]))
 
     if target_channel:
-        sent_message = await target_channel.send(content=mention_text, embed=new_embed, view=view)
+        webhook = await get_or_create_webhook(target_channel)
+        # 웹훅을 통해 메시지 전송 (봇 이름과 프로필을 원본 매크로 로그 스타일로 맞춤)
+        sent_message = await webhook.send(
+            content=mention_text,
+            embed=new_embed,
+            view=view,
+            username="MBF Macro",
+            wait=True
+        )
         ACTIVE_BIOME_MESSAGES[(channel_id_str, "default")] = sent_message
 
 @bot.event
