@@ -175,13 +175,6 @@ def extract_all_text(message) -> str:
 
     return "\n".join(parts)
 
-async def get_or_create_webhook(channel):
-    webhooks = await channel.webhooks()
-    for wh in webhooks:
-        if wh.user == bot.user:
-            return wh
-    return await channel.create_webhook(name=bot.user.name)
-
 async def process_macro_message(message):
     if message.author == bot.user:
         return
@@ -206,9 +199,9 @@ async def process_macro_message(message):
                     old_desc = old_embed.description
                     
                     if "(사라짐)" not in old_desc:
-                        new_desc = re.sub(r"(감지 시간:\s*<t:\d+:R>)", r"\1 (사라짐)", old_desc)
+                        new_desc = re.sub(r"(Started:\s*<t:\d+:R>)", r"\1 (사라짐)", old_desc)
                         if "(사라짐)" not in new_desc:
-                            new_desc = re.sub(r"감지 시간:.*", "감지 시간: (사라짐)", old_desc)
+                            new_desc = re.sub(r"Started:.*", "Started: (사라짐)", old_desc)
                     else:
                         new_desc = old_desc
                     
@@ -274,20 +267,21 @@ async def process_macro_message(message):
     session_match = re.search(r"Session\s+Time\s*:\s*([^\n\r]+)", clean_text, re.IGNORECASE)
     if not session_match:
         session_match = re.search(r"Uptime\s*:\s*([^\n\r]+)", clean_text, re.IGNORECASE)
-    session_duration = session_match.group(1).strip() if session_match else "4h 34m"
+    session_duration = session_match.group(1).strip() if session_match else "2m 2s"
 
     msg_timestamp = int(message.created_at.timestamp())
     dynamic_time_str = f"<t:{msg_timestamp}:R>"
 
-    # 💡 필드를 사용하지 않고 description에 모아 담아 가로 폭을 좁고 콤팩트하게 고정
+    # 💡 스크린샷과 똑같이 메인 타이틀(Account, Uptime, Started)은 굵게(**), 값은 일반 폰트로 배치
     embed_description = (
-        f"유저: {owner_display}\n"
-        f"감지 시간: {dynamic_time_str}\n"
-        f"서버 시간: {session_duration}"
+        f"**Account:** {owner_display}\n"
+        f"**Uptime:** {session_duration}\n"
+        f"**Started:** {dynamic_time_str}"
     )
 
+    # 💡 바이옴 타이틀 디자인을 스크린샷(`Biome Started - LOST FOREST`) 형태로 매칭
     new_embed = discord.Embed(
-        title=f"{biome_name}",
+        title=f"Biome Started - {biome_name.upper()}",
         description=embed_description,
         color=embed_color
     )
@@ -311,15 +305,7 @@ async def process_macro_message(message):
             target_channel = bot.get_channel(int(output_row[0]))
 
     if target_channel:
-        webhook = await get_or_create_webhook(target_channel)
-        # 💡 버튼(view)을 완전히 제거하여 깔끔한 단일 박스 형태 유지 및 봇 프로필 유지
-        sent_message = await webhook.send(
-            content=mention_text,
-            embed=new_embed,
-            username=bot.user.name,
-            avatar_url=bot.user.avatar.url if bot.user.avatar else None,
-            wait=True
-        )
+        sent_message = await target_channel.send(content=mention_text, embed=new_embed)
         ACTIVE_BIOME_MESSAGES[(channel_id_str, "default")] = sent_message
 
 @bot.event
