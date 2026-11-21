@@ -82,7 +82,7 @@ BIOME_COLORS = {
     "Blood Rain": 0xFF0000,
     "Lost Forest": 0x66CC00,
     "Graveyard": 0x333333,
-    "Sandstorm": 0xCC9933,
+    "Sandstorm": 0xCC9966,
     "Starfall": 0x333399,
     "Corruption": 0x663399,
     "Singularity": 0x660000,
@@ -292,6 +292,9 @@ async def process_macro_message(message):
     if biome_name.lower() in exclude_biomes:
         return
 
+    # 💡 바이옴 이름을 모두 대문자로 변환 (.upper() 추가)
+    biome_name = biome_name.upper()
+
     biome_lower = biome_name.lower()
     role_to_mention = None
 
@@ -334,7 +337,6 @@ async def process_macro_message(message):
     msg_timestamp = int(message.created_at.timestamp())
     dynamic_time_str = f"<t:{msg_timestamp}:R>"
 
-    # 💡 유저, 감지 시간, 서버 시간을 볼드체(**)로 감싸도록 수정함
     embed_description = (
         f"**유저:** {owner_display}\n"
         f"**감지 시간:** {dynamic_time_str}\n"
