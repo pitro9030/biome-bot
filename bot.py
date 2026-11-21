@@ -45,19 +45,19 @@ ACTIVE_BIOME_MESSAGES = {}
 # ==========================================
 # ⚙️ [설정 구역] 
 # ==========================================
-ROLE_SPECIAL_GROUP_1 = "여기에_글리치드림스페이스사이버스페이스_통일역할ID입력"
-ROLE_SPECIAL_GROUP_2 = "여기에_펌킨문그레이브야드블러드레인_통일역할ID입력"
+ROLE_SPECIAL_GROUP_1 = "1562830412332404766"
+ROLE_SPECIAL_GROUP_2 = "1566090108170670342"
 
 BIOME_ROLE_CONFIG = {
-    "Hell": "역할ID_입력",
-    "Heaven": "역할ID_입력",
-    "Null": "역할ID_입력",
-    "Lost Forest": "역할ID_입력",
-    "Sandstorm": "역할ID_입력",
-    "Starfall": "역할ID_입력",
-    "Corruption": "역할ID_입력",
-    "Singularity": "역할ID_입력",
-    "The Radiant Forest": "역할ID_입력",
+    "Hell": "1562828440443293816",
+    "Heaven": "1562828596471533631",
+    "Null": "1567368669053460540",
+    "Lost Forest": "1562828696178528417",
+    "Sandstorm": "1567368780261228736",
+    "Starfall": "1562830216001228850",
+    "Corruption": "1562830718659469383",
+    "Singularity": "1562830295559053432",
+    "The Radiant Forest": "1562828821340880936",
 }
 
 BIOME_COLORS = {
