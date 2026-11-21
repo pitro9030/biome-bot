@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 import sqlite3
 import re
 import os
@@ -9,12 +10,19 @@ intents.message_content = True
 intents.messages = True
 intents.guilds = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+class MyBot(commands.Bot):
+    def __init__(self):
+        super().__init__(command_prefix="!", intents=intents)
+
+    async def setup_hook(self):
+        await self.tree.sync()
+        print("슬래시 명령어 동기화 완료!")
+
+bot = MyBot()
 
 conn = sqlite3.connect("bot_database.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# 테이블 자동 생성 (일반 출력방, rare 출력방, 이벤트 출력방, 유저 링크)
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS output_channel (
         channel_id TEXT
@@ -78,8 +86,8 @@ BIOME_COLORS = {
     "The Radiant Forest": 0xCC99FF
 }
 
-CUSTOM_CHECK_EMOJI = discord.PartialEmoji(name="check", id=1572517054693777588) # 본인 서버 체크 이모티콘 ID 입력
-CUSTOM_CROSS_EMOJI = discord.PartialEmoji(name="cross", id=1572517290111672431) # 본인 서버 엑스 이모티콘 ID 입력
+CUSTOM_CHECK_EMOJI = discord.PartialEmoji(name="check", id=1572517054693777588)
+CUSTOM_CROSS_EMOJI = discord.PartialEmoji(name="cross", id=1572517290111672431)
 # ==========================================
 
 @bot.event
@@ -87,51 +95,51 @@ async def on_ready():
     print(f"로그인 완료: {bot.user.name} (ID: {bot.user.id})")
     print("----------------------------------------")
 
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def 채널등록(ctx):
-    channel_id = str(ctx.channel.id)
+@bot.tree.command(name="채널등록", description="현재 채널을 매크로 감지 채널로 등록합니다.")
+@app_commands.checks.has_permissions(administrator=True)
+async def 채널등록(interaction: discord.Interaction):
+    channel_id = str(interaction.channel.id)
     SOURCE_CHANNELS.add(channel_id)
-    await ctx.send(f"✅ 이 채널({ctx.channel.mention})이 **매크로 감지 채널**로 즉시 등록되었습니다!")
+    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **매크로 감지 채널**로 즉시 등록되었습니다!", ephemeral=True)
 
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def 출력방등록(ctx):
-    channel_id = str(ctx.channel.id)
+@bot.tree.command(name="출력방등록", description="현재 채널을 일반 알림 출력방(test방)으로 설정합니다.")
+@app_commands.checks.has_permissions(administrator=True)
+async def 출력방등록(interaction: discord.Interaction):
+    channel_id = str(interaction.channel.id)
     cursor.execute("DELETE FROM output_channel")
     cursor.execute("INSERT INTO output_channel (channel_id) VALUES (?)", (channel_id,))
     conn.commit()
-    await ctx.send(f"✅ 이 채널({ctx.channel.mention})이 **일반 알림 출력방(test방)**으로 설정되었습니다!")
+    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **일반 알림 출력방(test방)**으로 설정되었습니다!", ephemeral=True)
 
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def rare방등록(ctx):
-    channel_id = str(ctx.channel.id)
+@bot.tree.command(name="rare방등록", description="현재 채널을 특수 바이옴 전용 방(rare방)으로 설정합니다.")
+@app_commands.checks.has_permissions(administrator=True)
+async def rare방등록(interaction: discord.Interaction):
+    channel_id = str(interaction.channel.id)
     cursor.execute("DELETE FROM rare_channel")
     cursor.execute("INSERT INTO rare_channel (channel_id) VALUES (?)", (channel_id,))
     conn.commit()
-    await ctx.send(f"✅ 이 채널({ctx.channel.mention})이 **특수 바이옴 전용 방(rare방)**으로 설정되었습니다!")
+    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **특수 바이옴 전용 방(rare방)**으로 설정되었습니다!", ephemeral=True)
 
-# 💡 Pumpkin Moon, Graveyard, Blood Rain 전용 방 등록 명령어
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def 이벤트방등록(ctx):
-    channel_id = str(ctx.channel.id)
+@bot.tree.command(name="이벤트방등록", description="현재 채널을 이벤트 바이옴 전용 방으로 설정합니다.")
+@app_commands.checks.has_permissions(administrator=True)
+async def 이벤트방등록(interaction: discord.Interaction):
+    channel_id = str(interaction.channel.id)
     cursor.execute("DELETE FROM event_channel")
     cursor.execute("INSERT INTO event_channel (channel_id) VALUES (?)", (channel_id,))
     conn.commit()
-    await ctx.send(f"✅ 이 채널({ctx.channel.mention})이 **이벤트 바이옴 전용 방(Pumpkin Moon/Graveyard/Blood Rain)**으로 설정되었습니다!")
+    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **이벤트 바이옴 전용 방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.command()
-async def 링크등록(ctx, roblox_name: str, url: str):
-    discord_id = ctx.author.id
+@bot.tree.command(name="링크등록", description="로블록스 닉네임과 비공개 서버 링크를 연동합니다.")
+@app_commands.describe(roblox_name="로블록스 닉네임", url="비공개 서버 링크 URL")
+async def 링크등록(interaction: discord.Interaction, roblox_name: str, url: str):
+    discord_id = interaction.user.id
     cursor.execute("SELECT * FROM user_links WHERE roblox_name = ?", (roblox_name,))
     if cursor.fetchone():
         cursor.execute("UPDATE user_links SET discord_id = ?, server_url = ? WHERE roblox_name = ?", (discord_id, url, roblox_name))
     else:
-        cursor.execute("INSERT INTO user_links (discord_id, roblox_name, server_url) VALUES (?, ?, ?)", (discord_id, roblox_name, url))
+        cursor.execute("INSERT INTO user_links (discord_id, roblox_name, server_url) VALUES (?, ?, ?)", (discord_id, url, roblox_name))
     conn.commit()
-    await ctx.send(f"✅ **{roblox_name}**님의 비공개 서버 링크와 디스코드 계정({ctx.author.mention})이 연동되었습니다!")
+    await interaction.response.send_message(f"✅ **{roblox_name}**님의 비공개 서버 링크와 디스코드 계정({interaction.user.mention})이 연동되었습니다!", ephemeral=True)
 
 class BiomeControlView(discord.ui.View):
     def __init__(self, server_url: str):
@@ -227,7 +235,8 @@ async def process_macro_message(message):
                     
                     for i, field in enumerate(new_embed.fields):
                         if field.name == "Detection Time" or field.name == "바이옴 감지 시간":
-                            new_embed.set_field_at(i, name="Detection Time", value="방금 전 - (사라짐)", inline=False)
+                            # 💡 Ended 감지 시 "(사라짐)"으로 변경
+                            new_embed.set_field_at(i, name="Detection Time", value="(사라짐)", inline=False)
 
                     await sent_msg.edit(content=sent_msg.content, embed=new_embed)
             except Exception as e:
@@ -301,10 +310,6 @@ async def process_macro_message(message):
 
     view = BiomeControlView(user_private_url)
 
-    # 💡 [출력 채널 3갈래 분기 처리]
-    # 1. Dreamspace, Glitch, Cyberspace -> rare_channel
-    # 2. Pumpkin Moon, Graveyard, Blood Rain -> event_channel
-    # 3. 그 외 바이옴 -> output_channel (test방)
     target_channel = None
 
     if biome_lower in rare_group:
@@ -331,7 +336,6 @@ async def process_macro_message(message):
 @bot.event
 async def on_message(message):
     await process_macro_message(message)
-    await bot.process_commands(message)
 
 @bot.event
 async def on_message_edit(before, after):
