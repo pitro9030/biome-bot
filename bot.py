@@ -45,7 +45,8 @@ cursor.execute("""
 """)
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS user_links (
-        discord_id INTEGER PRIMARY KEY,
+        discord_id INTEGER,
+        roblox_name TEXT,
         server_url TEXT
     )
 """)
@@ -71,25 +72,26 @@ BIOME_ROLE_CONFIG = {
     "The Radiant Forest": "1562828821340880936",
 }
 
+# 💡 모든 바이옴 색상 전면 재정비 및 점검 완료
 BIOME_COLORS = {
-    "Hell": 0xCC0000,
-    "Heaven": 0xFFCC33,
-    "Null": 0xCCCCCC,
-    "Dreamspace": 0xFF99FF,
-    "Cyberspace": 0x6666FF,
-    "Glitch": 0x003300,
-    "Pumpkin Moon": 0xFF6600,
-    "Blood Rain": 0xFF0000,
-    "Lost Forest": 0x66CC00,
-    "Graveyard": 0x333333,
-    "Sandstorm": 0xCC9966,
-    "Starfall": 0x333399,
-    "Corruption": 0x663399,
-    "Singularity": 0x660000,
-    "The Radiant Forest": 0xCC99FF,
-    "Windy": 0x99FFFF,
-    "Snowy": 0xFFFFFF,
-    "Rainy": 0x0066CC
+    "hell": 0xCC0000,
+    "heaven": 0xFFCC33,
+    "null": 0xCCCCCC,
+    "dreamspace": 0xFF99FF,
+    "cyberspace": 0x6666FF,
+    "glitch": 0x003300,
+    "pumpkin moon": 0xFF6600,
+    "blood rain": 0xFF0000,
+    "lost forest": 0x66CC00,
+    "graveyard": 0x333333,
+    "sandstorm": 0xCC9966,
+    "starfall": 0x333399,
+    "corruption": 0x663399,
+    "singularity": 0x660000,
+    "the radiant forest": 0xCC99FF,
+    "windy": 0x99FFFF,
+    "snowy": 0xFFFFFF,
+    "rainy": 0x0066CC
 }
 
 CUSTOM_CHECK_EMOJI = discord.PartialEmoji(name="check", id=1572517054693777588)
@@ -139,13 +141,17 @@ async def 이벤트방등록(interaction: discord.Interaction):
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **이벤트 바이옴 전용 방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="링크등록", description="본인의 비공개 서버 링크를 등록합니다.")
-@app_commands.describe(url="비공개 서버 링크 URL")
-async def 링크등록(interaction: discord.Interaction, url: str):
+@bot.tree.command(name="링크등록", description="로블록스 닉네임과 비공개 서버 링크를 연동합니다.")
+@app_commands.describe(roblox_name="로블록스 닉네임", url="비공개 서버 링크 URL")
+async def 링크등록(interaction: discord.Interaction, roblox_name: str, url: str):
     discord_id = interaction.user.id
-    cursor.execute("INSERT OR REPLACE INTO user_links (discord_id, server_url) VALUES (?, ?)", (discord_id, url))
+    cursor.execute("SELECT * FROM user_links WHERE roblox_name = ?", (roblox_name,))
+    if cursor.fetchone():
+        cursor.execute("UPDATE user_links SET discord_id = ?, server_url = ? WHERE roblox_name = ?", (discord_id, url, roblox_name))
+    else:
+        cursor.execute("INSERT INTO user_links (discord_id, roblox_name, server_url) VALUES (?, ?, ?)", (discord_id, roblox_name, url))
     conn.commit()
-    await interaction.response.send_message(f"✅ {interaction.user.mention}님의 비공개 서버 링크가 성공적으로 등록되었습니다!", ephemeral=True)
+    await interaction.response.send_message(f"✅ **{roblox_name}**님의 비공개 서버 링크와 디스코드 계정({interaction.user.mention})이 연동되었습니다!", ephemeral=True)
 
 class BiomeControlView(discord.ui.View):
     def __init__(self, server_url: str):
@@ -245,25 +251,27 @@ async def process_macro_message(message):
         return
 
     full_text = extract_all_text(message)
+    print(f"[감지된 원본 텍스트]\n{full_text}\n{'-'*30}")
+
     clean_text = re.sub(r"[*#>`]", "", full_text)
+
+    account_match = re.search(r"Account\s*:\s*([^\n\r]+)", clean_text, re.IGNORECASE)
+    roblox_username = account_match.group(1).strip() if account_match else None
 
     end_pattern = r"Biome\s+Ended|Ended|Strange\s+Controller\s+was\s+used|Biome\s+Randomizer\s+was\s+used"
     
     if re.search(end_pattern, clean_text, re.IGNORECASE):
-        target_keys = [k for k in ACTIVE_BIOME_MESSAGES.keys() if k[0] == channel_id_str]
-        for tracking_key in target_keys:
+        tracking_key = (channel_id_str, roblox_username)
+        if tracking_key in ACTIVE_BIOME_MESSAGES:
             sent_msg = ACTIVE_BIOME_MESSAGES[tracking_key]
             try:
                 if sent_msg.embeds:
                     old_embed = sent_msg.embeds[0]
                     old_desc = old_embed.description
                     
-                    if "(사라짐)" not in old_desc:
-                        new_desc = re.sub(r"(\*\*감지 시간:\*\*\s*<t:\d+:R>)", r"\1 (사라짐)", old_desc)
-                        if "(사라짐)" not in new_desc:
-                            new_desc = re.sub(r"\*\*감지 시간:\*\*.*", "**감지 시간:** (사라짐)", old_desc)
-                    else:
-                        new_desc = old_desc
+                    new_desc = re.sub(r"(감지 시간:\s*<t:\d+:R>)(.*)", r"\1 (사라짐)", old_desc)
+                    if "(사라짐)" not in new_desc:
+                        new_desc = re.sub(r"감지 시간:.*", "감지 시간: (사라짐)", old_desc)
                     
                     new_embed = discord.Embed(
                         title=f"{old_embed.title}",
@@ -292,9 +300,6 @@ async def process_macro_message(message):
     if biome_name.lower() in exclude_biomes:
         return
 
-    # 💡 바이옴 이름을 모두 대문자로 변환 (.upper() 추가)
-    biome_name = biome_name.upper()
-
     biome_lower = biome_name.lower()
     role_to_mention = None
 
@@ -316,12 +321,13 @@ async def process_macro_message(message):
     user_private_url = "https://discord.gg/기본링크"
     owner_display = "@알수없는-사용자"
 
-    cursor.execute("SELECT discord_id, server_url FROM user_links ORDER BY rowid DESC LIMIT 1")
-    link_result = cursor.fetchone()
-    
-    if link_result:
-        discord_id, user_private_url = link_result[0], link_result[1]
-        owner_display = f"<@{discord_id}>"
+    if roblox_username:
+        cursor.execute("SELECT discord_id, server_url FROM user_links WHERE roblox_name = ?", (roblox_username,))
+        result = cursor.fetchone()
+        if result:
+            discord_id, user_private_url = result[0], result[1]
+            if discord_id:
+                owner_display = f"<@{discord_id}>"
 
     embed_color = 0x00A2FF
     for key, color_val in BIOME_COLORS.items():
@@ -330,17 +336,15 @@ async def process_macro_message(message):
             break
 
     session_match = re.search(r"Session\s+Time\s*:\s*([^\n\r]+)", clean_text, re.IGNORECASE)
-    if not session_match:
-        session_match = re.search(r"Uptime\s*:\s*([^\n\r]+)", clean_text, re.IGNORECASE)
     session_duration = session_match.group(1).strip() if session_match else "4h 34m"
 
     msg_timestamp = int(message.created_at.timestamp())
     dynamic_time_str = f"<t:{msg_timestamp}:R>"
 
     embed_description = (
-        f"**유저:** {owner_display}\n"
-        f"**감지 시간:** {dynamic_time_str}\n"
-        f"**서버 시간:** {session_duration}"
+        f"유저: {owner_display}\n"
+        f"감지 시간: {dynamic_time_str}\n"
+        f"서버 시간: {session_duration}"
     )
 
     new_embed = discord.Embed(
@@ -371,7 +375,8 @@ async def process_macro_message(message):
 
     if target_channel:
         sent_message = await target_channel.send(content=mention_text, embed=new_embed, view=view)
-        ACTIVE_BIOME_MESSAGES[(channel_id_str, "default")] = sent_message
+        if roblox_username:
+            ACTIVE_BIOME_MESSAGES[(channel_id_str, roblox_username)] = sent_message
 
 @bot.event
 async def on_message(message):
