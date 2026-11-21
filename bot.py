@@ -82,7 +82,7 @@ BIOME_COLORS = {
     "Blood Rain": 0xFF0000,
     "Lost Forest": 0x66CC00,
     "Graveyard": 0x333333,
-    "Sandstorm": 0xCC9966,
+    "Sandstorm": 0xCC9933,
     "Starfall": 0x333399,
     "Corruption": 0x663399,
     "Singularity": 0x660000,
