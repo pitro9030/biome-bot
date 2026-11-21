@@ -4,7 +4,6 @@ from discord import app_commands
 import sqlite3
 import re
 import os
-import aiohttp
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -92,9 +91,6 @@ BIOME_COLORS = {
     "Snowy": 0xFFFFFF,
     "Rainy": 0x0066CC
 }
-
-CUSTOM_CHECK_EMOJI = discord.PartialEmoji(name="check", id=1572517054693777588)
-CUSTOM_CROSS_EMOJI = discord.PartialEmoji(name="cross", id=1572517290111672431)
 # ==========================================
 
 @bot.event
@@ -148,63 +144,6 @@ async def 링크등록(interaction: discord.Interaction, url: str):
     conn.commit()
     await interaction.response.send_message(f"✅ {interaction.user.mention}님의 비공개 서버 링크가 성공적으로 등록되었습니다!", ephemeral=True)
 
-class BiomeControlView(discord.ui.View):
-    def __init__(self, server_url: str):
-        super().__init__(timeout=None)
-        self.check_count = 0
-        self.cross_count = 0
-        self.checked_users = set()
-        self.crossed_users = set()
-        
-        self.add_item(discord.ui.Button(
-            label="Join Server",
-            url=server_url,
-            style=discord.ButtonStyle.link,
-            row=0
-        ))
-
-    @discord.ui.button(label="0", emoji=CUSTOM_CHECK_EMOJI, style=discord.ButtonStyle.secondary, row=0)
-    async def check_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        user_id = interaction.user.id
-        if user_id in self.checked_users:
-            self.checked_users.remove(user_id)
-            self.check_count = max(0, self.check_count - 1)
-        else:
-            self.checked_users.add(user_id)
-            self.check_count += 1
-            if user_id in self.crossed_users:
-                self.crossed_users.remove(user_id)
-                self.cross_count = max(0, self.cross_count - 1)
-
-        for child in self.children:
-            if getattr(child, "emoji", None) == CUSTOM_CHECK_EMOJI:
-                child.label = f"{self.check_count}"
-            elif getattr(child, "emoji", None) == CUSTOM_CROSS_EMOJI:
-                child.label = f"{self.cross_count}"
-
-        await interaction.response.edit_message(view=self)
-
-    @discord.ui.button(label="0", emoji=CUSTOM_CROSS_EMOJI, style=discord.ButtonStyle.secondary, row=0)
-    async def cross_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        user_id = interaction.user.id
-        if user_id in self.crossed_users:
-            self.crossed_users.remove(user_id)
-            self.cross_count = max(0, self.cross_count - 1)
-        else:
-            self.crossed_users.add(user_id)
-            self.cross_count += 1
-            if user_id in self.checked_users:
-                self.checked_users.remove(user_id)
-                self.check_count = max(0, self.check_count - 1)
-
-        for child in self.children:
-            if getattr(child, "emoji", None) == CUSTOM_CHECK_EMOJI:
-                child.label = f"{self.check_count}"
-            elif getattr(child, "emoji", None) == CUSTOM_CROSS_EMOJI:
-                child.label = f"{self.cross_count}"
-
-        await interaction.response.edit_message(view=self)
-
 def extract_all_text(message) -> str:
     parts = []
     if message.content:
@@ -238,9 +177,10 @@ def extract_all_text(message) -> str:
 
 async def get_or_create_webhook(channel):
     webhooks = await channel.webhooks()
-    if webhooks:
-        return webhooks[0]
-    return await channel.create_webhook(name="Macro Tracker Webhook")
+    for wh in webhooks:
+        if wh.user == bot.user:
+            return wh
+    return await channel.create_webhook(name=bot.user.name)
 
 async def process_macro_message(message):
     if message.author == bot.user:
@@ -263,14 +203,20 @@ async def process_macro_message(message):
             try:
                 if sent_msg.embeds:
                     old_embed = sent_msg.embeds[0]
-                    new_embed = discord.Embed.from_dict(old_embed.to_dict())
+                    old_desc = old_embed.description
                     
-                    for i, field in enumerate(new_embed.fields):
-                        if "감지 시간" in field.name:
-                            if "(사라짐)" not in field.value:
-                                new_val = f"{field.value} (사라짐)"
-                                new_embed.set_field_at(i, name=field.name, value=new_val, inline=False)
-
+                    if "(사라짐)" not in old_desc:
+                        new_desc = re.sub(r"(감지 시간:\s*<t:\d+:R>)", r"\1 (사라짐)", old_desc)
+                        if "(사라짐)" not in new_desc:
+                            new_desc = re.sub(r"감지 시간:.*", "감지 시간: (사라짐)", old_desc)
+                    else:
+                        new_desc = old_desc
+                    
+                    new_embed = discord.Embed(
+                        title=f"{old_embed.title}",
+                        description=new_desc,
+                        color=old_embed.color
+                    )
                     await sent_msg.edit(content=sent_msg.content, embed=new_embed)
             except Exception as e:
                 print(f"메시지 수정 중 오류 발생: {e}")
@@ -311,14 +257,12 @@ async def process_macro_message(message):
 
     mention_text = f"<@&{role_to_mention}>" if role_to_mention and role_to_mention.isdigit() else ""
 
-    user_private_url = "https://discord.gg/기본링크"
     owner_display = "@알수없는-사용자"
-
-    cursor.execute("SELECT discord_id, server_url FROM user_links ORDER BY rowid DESC LIMIT 1")
+    cursor.execute("SELECT discord_id FROM user_links ORDER BY rowid DESC LIMIT 1")
     link_result = cursor.fetchone()
     
     if link_result:
-        discord_id, user_private_url = link_result[0], link_result[1]
+        discord_id = link_result[0]
         owner_display = f"<@{discord_id}>"
 
     embed_color = 0x00A2FF
@@ -335,15 +279,18 @@ async def process_macro_message(message):
     msg_timestamp = int(message.created_at.timestamp())
     dynamic_time_str = f"<t:{msg_timestamp}:R>"
 
+    # 💡 필드를 사용하지 않고 description에 모아 담아 가로 폭을 좁고 콤팩트하게 고정
+    embed_description = (
+        f"유저: {owner_display}\n"
+        f"감지 시간: {dynamic_time_str}\n"
+        f"서버 시간: {session_duration}"
+    )
+
     new_embed = discord.Embed(
         title=f"{biome_name}",
+        description=embed_description,
         color=embed_color
     )
-    new_embed.add_field(name="유저", value=owner_display, inline=False)
-    new_embed.add_field(name="감지 시간", value=dynamic_time_str, inline=False)
-    new_embed.add_field(name="서버 시간", value=session_duration, inline=False)
-
-    view = BiomeControlView(user_private_url)
 
     target_channel = None
 
@@ -365,12 +312,12 @@ async def process_macro_message(message):
 
     if target_channel:
         webhook = await get_or_create_webhook(target_channel)
-        # 웹훅을 통해 메시지 전송 (봇 이름과 프로필을 원본 매크로 로그 스타일로 맞춤)
+        # 💡 버튼(view)을 완전히 제거하여 깔끔한 단일 박스 형태 유지 및 봇 프로필 유지
         sent_message = await webhook.send(
             content=mention_text,
             embed=new_embed,
-            view=view,
-            username="MBF Macro",
+            username=bot.user.name,
+            avatar_url=bot.user.avatar.url if bot.user.avatar else None,
             wait=True
         )
         ACTIVE_BIOME_MESSAGES[(channel_id_str, "default")] = sent_message
