@@ -148,7 +148,7 @@ async def 링크등록(interaction: discord.Interaction, roblox_name: str, url: 
     if cursor.fetchone():
         cursor.execute("UPDATE user_links SET discord_id = ?, server_url = ? WHERE roblox_name = ?", (discord_id, url, roblox_name))
     else:
-        cursor.execute("INSERT INTO user_links (discord_id, roblox_name, server_url) VALUES (?, ?, ?)", (discord_id, url, roblox_name))
+        cursor.execute("INSERT INTO user_links (discord_id, roblox_name, server_url) VALUES (?, ?, ?)", (discord_id, roblox_name, url))
     conn.commit()
     await interaction.response.send_message(f"✅ **{roblox_name}**님의 비공개 서버 링크와 디스코드 계정({interaction.user.mention})이 연동되었습니다!", ephemeral=True)
 
@@ -161,13 +161,13 @@ class BiomeControlView(discord.ui.View):
         self.crossed_users = set()
         
         self.add_item(discord.ui.Button(
-            label="서버 참가",
+            label="Join Server",
             url=server_url,
             style=discord.ButtonStyle.link,
             row=0
         ))
 
-    @discord.ui.button(label="0", emoji=CUSTOM_CHECK_EMOJI, style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="0", emoji=CUSTOM_CHECK_EMOJI, style=discord.ButtonStyle.secondary, row=0)
     async def check_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         user_id = interaction.user.id
         if user_id in self.checked_users:
@@ -188,7 +188,7 @@ class BiomeControlView(discord.ui.View):
 
         await interaction.response.edit_message(view=self)
 
-    @discord.ui.button(label="0", emoji=CUSTOM_CROSS_EMOJI, style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="0", emoji=CUSTOM_CROSS_EMOJI, style=discord.ButtonStyle.secondary, row=0)
     async def cross_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         user_id = interaction.user.id
         if user_id in self.crossed_users:
@@ -257,8 +257,6 @@ async def process_macro_message(message):
     account_match = re.search(r"Account\s*:\s*([^\n\r]+)", clean_text, re.IGNORECASE)
     roblox_username = account_match.group(1).strip() if account_match else None
 
-    # 💡 [종료(Ended) 및 수동 조작 감지 조건 추가]
-    # "Biome Ended", "Ended", "Strange Controller was used", "Biome Randomizer was used" 중 하나라도 포함되면 종료 처리
     end_pattern = r"Biome\s+Ended|Ended|Strange\s+Controller\s+was\s+used|Biome\s+Randomizer\s+was\s+used"
     
     if re.search(end_pattern, clean_text, re.IGNORECASE):
@@ -268,12 +266,18 @@ async def process_macro_message(message):
             try:
                 if sent_msg.embeds:
                     old_embed = sent_msg.embeds[0]
-                    new_embed = discord.Embed.from_dict(old_embed.to_dict())
+                    old_desc = old_embed.description
                     
-                    for i, field in enumerate(new_embed.fields):
-                        if "감지 시간" in field.name or "Detection Time" in field.name:
-                            new_embed.set_field_at(i, name="⏱️ 감지 시간", value="(사라짐)", inline=False)
-
+                    # 💡 감지 시간 뒤에 흐르는 시간 태그는 유지하되 옆에 (사라짐)을 붙이도록 수정
+                    new_desc = re.sub(r"(감지 시간:\s*<t:\d+:R>)(.*)", r"\1 (사라짐)", old_desc)
+                    if "(사라짐)" not in new_desc:
+                        new_desc = re.sub(r"감지 시간:.*", "감지 시간: (사라짐)", old_desc)
+                    
+                    new_embed = discord.Embed(
+                        title=f"{old_embed.title}",
+                        description=new_desc,
+                        color=old_embed.color
+                    )
                     await sent_msg.edit(content=sent_msg.content, embed=new_embed)
             except Exception as e:
                 print(f"메시지 수정 중 오류 발생: {e}")
@@ -315,7 +319,7 @@ async def process_macro_message(message):
     mention_text = f"<@&{role_to_mention}>" if role_to_mention and role_to_mention.isdigit() else ""
 
     user_private_url = "https://discord.gg/기본링크"
-    owner_display = f"👤 {roblox_username}" if roblox_username else "👤 @알수없는-사용자"
+    owner_display = "@알수없는-사용자"
 
     if roblox_username:
         cursor.execute("SELECT discord_id, server_url FROM user_links WHERE roblox_name = ?", (roblox_username,))
@@ -323,7 +327,7 @@ async def process_macro_message(message):
         if result:
             discord_id, user_private_url = result[0], result[1]
             if discord_id:
-                owner_display = f"👤 <@{discord_id}>"
+                owner_display = f"<@{discord_id}>"
 
     embed_color = 0x00A2FF
     for key, color_val in BIOME_COLORS.items():
@@ -337,13 +341,18 @@ async def process_macro_message(message):
     msg_timestamp = int(message.created_at.timestamp())
     dynamic_time_str = f"<t:{msg_timestamp}:R>"
 
+    # 💡 기본 생성 시 감지 시간 형식
+    embed_description = (
+        f"유저: {owner_display}\n"
+        f"감지 시간: {dynamic_time_str}\n"
+        f"서버 시간: {session_duration}"
+    )
+
     new_embed = discord.Embed(
-        title=f"✨ {biome_name}",
+        title=f"{biome_name}",
+        description=embed_description,
         color=embed_color
     )
-    new_embed.add_field(name="📌 유저", value=owner_display, inline=False)
-    new_embed.add_field(name="⏱️ 감지 시간", value=dynamic_time_str, inline=False)
-    new_embed.add_field(name="⏳ 서버 시간", value=f"`{session_duration}`", inline=False)
 
     view = BiomeControlView(user_private_url)
 
