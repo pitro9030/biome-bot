@@ -24,6 +24,11 @@ conn = sqlite3.connect("bot_database.db", check_same_thread=False)
 cursor = conn.cursor()
 
 cursor.execute("""
+    CREATE TABLE IF NOT EXISTS source_channels (
+        channel_id TEXT PRIMARY KEY
+    )
+""")
+cursor.execute("""
     CREATE TABLE IF NOT EXISTS output_channel (
         channel_id TEXT
     )
@@ -47,7 +52,6 @@ cursor.execute("""
 """)
 conn.commit()
 
-SOURCE_CHANNELS = set()
 ACTIVE_BIOME_MESSAGES = {}
 
 # ==========================================
@@ -83,7 +87,10 @@ BIOME_COLORS = {
     "Starfall": 0x333399,
     "Corruption": 0x663399,
     "Singularity": 0x660000,
-    "The Radiant Forest": 0xCC99FF
+    "The Radiant Forest": 0xCC99FF,
+    "Windy": 0x99FFFF,
+    "Snowy": 0xFFFFFF,
+    "Rainy": 0x0066CC
 }
 
 CUSTOM_CHECK_EMOJI = discord.PartialEmoji(name="check", id=1572517054693777588)
@@ -93,14 +100,18 @@ CUSTOM_CROSS_EMOJI = discord.PartialEmoji(name="cross", id=1572517290111672431)
 @bot.event
 async def on_ready():
     print(f"로그인 완료: {bot.user.name} (ID: {bot.user.id})")
+    cursor.execute("SELECT channel_id FROM source_channels")
+    saved_sources = [row[0] for row in cursor.fetchall()]
+    print(f"현재 등록된 감지 채널 ID 목록: {saved_sources}")
     print("----------------------------------------")
 
-@bot.tree.command(name="채널등록", description="현재 채널을 매크로 감지 채널로 등록합니다.")
+@bot.tree.command(name="채널등록", description="현재 채널을 매크로 감지 채널로 영구 등록합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def 채널등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
-    SOURCE_CHANNELS.add(channel_id)
-    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **매크로 감지 채널**로 즉시 등록되었습니다!", ephemeral=True)
+    cursor.execute("INSERT OR IGNORE INTO source_channels (channel_id) VALUES (?)", (channel_id,))
+    conn.commit()
+    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **매크로 감지 채널**로 영구 등록되었습니다!", ephemeral=True)
 
 @bot.tree.command(name="출력방등록", description="현재 채널을 일반 알림 출력방(test방)으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
@@ -198,33 +209,59 @@ class BiomeControlView(discord.ui.View):
 
         await interaction.response.edit_message(view=self)
 
+def extract_all_text(message) -> str:
+    parts = []
+    if message.content:
+        parts.append(message.content)
+
+    for embed in message.embeds:
+        data = embed.to_dict()
+        if data.get("title"):
+            parts.append(str(data["title"]))
+        if data.get("description"):
+            parts.append(str(data["description"]))
+        for field in data.get("fields", []):
+            parts.append(f"{field.get('name', '')}: {field.get('value', '')}")
+        if data.get("footer", {}).get("text"):
+            parts.append(str(data["footer"]["text"]))
+
+    def walk_components(comps):
+        for comp in comps:
+            c_dict = comp.to_dict() if hasattr(comp, "to_dict") else (comp if isinstance(comp, dict) else {})
+            if c_dict.get("content"):
+                parts.append(str(c_dict["content"]))
+            if c_dict.get("label"):
+                parts.append(str(c_dict["label"]))
+            if "components" in c_dict:
+                walk_components(c_dict["components"])
+
+    if getattr(message, "components", None):
+        walk_components(message.components)
+
+    return "\n".join(parts)
+
 async def process_macro_message(message):
     if message.author == bot.user:
         return
 
     channel_id_str = str(message.channel.id)
-    if channel_id_str not in SOURCE_CHANNELS:
+    cursor.execute("SELECT 1 FROM source_channels WHERE channel_id = ?", (channel_id_str,))
+    if not cursor.fetchone():
         return
 
-    embed_texts = []
-    for embed in message.embeds:
-        data = embed.to_dict()
-        t = data.get("title", "")
-        d = data.get("description", "")
-        fields = data.get("fields", [])
-        f = "".join([f"\n{f.get('name', '')}: {f.get('value', '')}" for f in fields])
-        u = data.get("url", "")
-        embed_texts.append(f"{t}\n{d}\n{f}\n{u}")
-    
-    full_text = f"{message.content}\n" + "\n".join(embed_texts)
+    full_text = extract_all_text(message)
+    print(f"[감지된 원본 텍스트]\n{full_text}\n{'-'*30}")
 
-    account_match = re.search(r"Account[:\s]+\*\*([^*]+)\*\*", full_text)
-    if not account_match:
-        account_match = re.search(r"Account[:\s]+([^\n\r]+)", full_text)
-    
+    clean_text = re.sub(r"[*#>`]", "", full_text)
+
+    account_match = re.search(r"Account\s*:\s*([^\n\r]+)", clean_text, re.IGNORECASE)
     roblox_username = account_match.group(1).strip() if account_match else None
 
-    if "Ended" in full_text:
+    # 💡 [종료(Ended) 및 수동 조작 감지 조건 추가]
+    # "Biome Ended", "Ended", "Strange Controller was used", "Biome Randomizer was used" 중 하나라도 포함되면 종료 처리
+    end_pattern = r"Biome\s+Ended|Ended|Strange\s+Controller\s+was\s+used|Biome\s+Randomizer\s+was\s+used"
+    
+    if re.search(end_pattern, clean_text, re.IGNORECASE):
         tracking_key = (channel_id_str, roblox_username)
         if tracking_key in ACTIVE_BIOME_MESSAGES:
             sent_msg = ACTIVE_BIOME_MESSAGES[tracking_key]
@@ -234,9 +271,8 @@ async def process_macro_message(message):
                     new_embed = discord.Embed.from_dict(old_embed.to_dict())
                     
                     for i, field in enumerate(new_embed.fields):
-                        if field.name == "Detection Time" or field.name == "바이옴 감지 시간":
-                            # 💡 Ended 감지 시 "(사라짐)"으로 변경
-                            new_embed.set_field_at(i, name="Detection Time", value="(사라짐)", inline=False)
+                        if "감지 시간" in field.name or "Detection Time" in field.name:
+                            new_embed.set_field_at(i, name="⏱️ 감지 시간", value="(사라짐)", inline=False)
 
                     await sent_msg.edit(content=sent_msg.content, embed=new_embed)
             except Exception as e:
@@ -245,23 +281,18 @@ async def process_macro_message(message):
             del ACTIVE_BIOME_MESSAGES[tracking_key]
         return
 
-    if "Started" not in full_text:
+    if not re.search(r"Biome\s+Started", clean_text, re.IGNORECASE):
         return
 
     biome_name = None
-    match = re.search(r"Biome\s+Started\s*-\s*([^\n\r]+)", full_text, re.IGNORECASE)
+    match = re.search(r"Biome\s+Started\s*[-–—:]\s*([^\n\r]+)", clean_text, re.IGNORECASE)
     if match:
         biome_name = match.group(1).strip()
-    else:
-        if "Biome Started -" in full_text:
-            parts = full_text.split("Biome Started -")
-            if len(parts) > 1:
-                biome_name = parts[1].split("\n")[0].strip()
 
     if not biome_name:
         biome_name = "Unknown"
 
-    exclude_biomes = ["normal", "snowy", "windy", "rainy"]
+    exclude_biomes = ["normal"]
     if biome_name.lower() in exclude_biomes:
         return
 
@@ -284,7 +315,7 @@ async def process_macro_message(message):
     mention_text = f"<@&{role_to_mention}>" if role_to_mention and role_to_mention.isdigit() else ""
 
     user_private_url = "https://discord.gg/기본링크"
-    owner_display = f"@알수없는-사용자 ({roblox_username})" if roblox_username else "@알수없는-사용자"
+    owner_display = f"👤 {roblox_username}" if roblox_username else "👤 @알수없는-사용자"
 
     if roblox_username:
         cursor.execute("SELECT discord_id, server_url FROM user_links WHERE roblox_name = ?", (roblox_username,))
@@ -292,7 +323,7 @@ async def process_macro_message(message):
         if result:
             discord_id, user_private_url = result[0], result[1]
             if discord_id:
-                owner_display = f"<@{discord_id}>"
+                owner_display = f"👤 <@{discord_id}>"
 
     embed_color = 0x00A2FF
     for key, color_val in BIOME_COLORS.items():
@@ -300,13 +331,19 @@ async def process_macro_message(message):
             embed_color = color_val
             break
 
+    session_match = re.search(r"Session\s+Time\s*:\s*([^\n\r]+)", clean_text, re.IGNORECASE)
+    session_duration = session_match.group(1).strip() if session_match else "4h 34m"
+
+    msg_timestamp = int(message.created_at.timestamp())
+    dynamic_time_str = f"<t:{msg_timestamp}:R>"
+
     new_embed = discord.Embed(
-        title=f"**{biome_name}**",
+        title=f"✨ {biome_name}",
         color=embed_color
     )
-    new_embed.add_field(name="Macroer", value=owner_display, inline=False)
-    new_embed.add_field(name="Detection Time", value="방금 전", inline=False)
-    new_embed.add_field(name="Session Duration", value="4h 34m", inline=False)
+    new_embed.add_field(name="📌 유저", value=owner_display, inline=False)
+    new_embed.add_field(name="⏱️ 감지 시간", value=dynamic_time_str, inline=False)
+    new_embed.add_field(name="⏳ 서버 시간", value=f"`{session_duration}`", inline=False)
 
     view = BiomeControlView(user_private_url)
 
