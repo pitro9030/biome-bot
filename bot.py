@@ -82,7 +82,7 @@ BIOME_COLORS = {
     "Blood Rain": 0xFF0000,
     "Lost Forest": 0x66CC00,
     "Graveyard": 0x333333,
-    "Sandstorm": 0xCC9933,
+    "Sandstorm": 0xCC9966,
     "Starfall": 0x333399,
     "Corruption": 0x663399,
     "Singularity": 0x660000,
@@ -259,9 +259,9 @@ async def process_macro_message(message):
                     old_desc = old_embed.description
                     
                     if "(사라짐)" not in old_desc:
-                        new_desc = re.sub(r"(감지 시간:\s*<t:\d+:R>)", r"\1 (사라짐)", old_desc)
+                        new_desc = re.sub(r"(\*\*감지 시간:\*\*\s*<t:\d+:R>)", r"\1 (사라짐)", old_desc)
                         if "(사라짐)" not in new_desc:
-                            new_desc = re.sub(r"감지 시간:.*", "감지 시간: (사라짐)", old_desc)
+                            new_desc = re.sub(r"\*\*감지 시간:\*\*.*", "**감지 시간:** (사라짐)", old_desc)
                     else:
                         new_desc = old_desc
                     
@@ -310,7 +310,6 @@ async def process_macro_message(message):
 
     mention_text = f"<@&{role_to_mention}>" if role_to_mention and role_to_mention.isdigit() else ""
 
-    # 💡 가장 최근에 /링크등록을 마친 유저의 정보를 가져와서 멘션으로 매칭
     user_private_url = "https://discord.gg/기본링크"
     owner_display = "@알수없는-사용자"
 
@@ -335,11 +334,11 @@ async def process_macro_message(message):
     msg_timestamp = int(message.created_at.timestamp())
     dynamic_time_str = f"<t:{msg_timestamp}:R>"
 
-    # 💡 [핵심 수정] 필드(fields)를 아예 쓰지 않고 description에만 담아 원본처럼 콤팩트한 박스 형태로 출력
+    # 💡 유저, 감지 시간, 서버 시간을 볼드체(**)로 감싸도록 수정함
     embed_description = (
-        f"유저: {owner_display}\n"
-        f"감지 시간: {dynamic_time_str}\n"
-        f"서버 시간: {session_duration}"
+        f"**유저:** {owner_display}\n"
+        f"**감지 시간:** {dynamic_time_str}\n"
+        f"**서버 시간:** {session_duration}"
     )
 
     new_embed = discord.Embed(
