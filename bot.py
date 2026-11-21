@@ -91,6 +91,9 @@ BIOME_COLORS = {
     "Snowy": 0xFFFFFF,
     "Rainy": 0x0066CC
 }
+
+CUSTOM_CHECK_EMOJI = discord.PartialEmoji(name="check", id=1572517054693777588)
+CUSTOM_CROSS_EMOJI = discord.PartialEmoji(name="cross", id=1572517290111672431)
 # ==========================================
 
 @bot.event
@@ -143,6 +146,63 @@ async def 링크등록(interaction: discord.Interaction, url: str):
     cursor.execute("INSERT OR REPLACE INTO user_links (discord_id, server_url) VALUES (?, ?)", (discord_id, url))
     conn.commit()
     await interaction.response.send_message(f"✅ {interaction.user.mention}님의 비공개 서버 링크가 성공적으로 등록되었습니다!", ephemeral=True)
+
+class BiomeControlView(discord.ui.View):
+    def __init__(self, server_url: str):
+        super().__init__(timeout=None)
+        self.check_count = 0
+        self.cross_count = 0
+        self.checked_users = set()
+        self.crossed_users = set()
+        
+        self.add_item(discord.ui.Button(
+            label="Join Server",
+            url=server_url,
+            style=discord.ButtonStyle.link,
+            row=0
+        ))
+
+    @discord.ui.button(label="0", emoji=CUSTOM_CHECK_EMOJI, style=discord.ButtonStyle.secondary, row=0)
+    async def check_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        user_id = interaction.user.id
+        if user_id in self.checked_users:
+            self.checked_users.remove(user_id)
+            self.check_count = max(0, self.check_count - 1)
+        else:
+            self.checked_users.add(user_id)
+            self.check_count += 1
+            if user_id in self.crossed_users:
+                self.crossed_users.remove(user_id)
+                self.cross_count = max(0, self.cross_count - 1)
+
+        for child in self.children:
+            if getattr(child, "emoji", None) == CUSTOM_CHECK_EMOJI:
+                child.label = f"{self.check_count}"
+            elif getattr(child, "emoji", None) == CUSTOM_CROSS_EMOJI:
+                child.label = f"{self.cross_count}"
+
+        await interaction.response.edit_message(view=self)
+
+    @discord.ui.button(label="0", emoji=CUSTOM_CROSS_EMOJI, style=discord.ButtonStyle.secondary, row=0)
+    async def cross_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        user_id = interaction.user.id
+        if user_id in self.crossed_users:
+            self.crossed_users.remove(user_id)
+            self.cross_count = max(0, self.cross_count - 1)
+        else:
+            self.crossed_users.add(user_id)
+            self.cross_count += 1
+            if user_id in self.checked_users:
+                self.checked_users.remove(user_id)
+                self.check_count = max(0, self.check_count - 1)
+
+        for child in self.children:
+            if getattr(child, "emoji", None) == CUSTOM_CHECK_EMOJI:
+                child.label = f"{self.check_count}"
+            elif getattr(child, "emoji", None) == CUSTOM_CROSS_EMOJI:
+                child.label = f"{self.cross_count}"
+
+        await interaction.response.edit_message(view=self)
 
 def extract_all_text(message) -> str:
     parts = []
@@ -206,11 +266,10 @@ async def process_macro_message(message):
                         new_desc = old_desc
                     
                     new_embed = discord.Embed(
-                        title=old_embed.title,
                         description=new_desc,
                         color=old_embed.color
                     )
-                    await sent_msg.edit(content=sent_msg.content, embed=new_embed)
+                    await sent_msg.edit(content=sent_msg.content, embed=new_embed, view=sent_msg.view)
             except Exception as e:
                 print(f"메시지 수정 중 오류 발생: {e}")
             
@@ -251,12 +310,11 @@ async def process_macro_message(message):
     mention_text = f"<@&{role_to_mention}>" if role_to_mention and role_to_mention.isdigit() else ""
 
     owner_display = "@알수없는-사용자"
-    cursor.execute("SELECT discord_id FROM user_links ORDER BY rowid DESC LIMIT 1")
+    cursor.execute("SELECT discord_id, server_url FROM user_links ORDER BY rowid DESC LIMIT 1")
     link_result = cursor.fetchone()
     
     if link_result:
-        discord_id = link_result[0]
-        owner_display = f"<@{discord_id}>"
+        discord_id, owner_display = link_result[0], f"<@{discord_id}>"
 
     embed_color = 0x00A2FF
     for key, color_val in BIOME_COLORS.items():
@@ -272,19 +330,20 @@ async def process_macro_message(message):
     msg_timestamp = int(message.created_at.timestamp())
     dynamic_time_str = f"<t:{msg_timestamp}:R>"
 
-    # 💡 스크린샷과 똑같이 타이틀은 대형 폰트로 올리고, 본문 항목들은 볼드/일반 조합으로 배치
-    embed_title = f"Biome Started - {biome_name.upper()}"
+    # 💡 바이옴 이름을 ### 헤더로 처리하여 description 최상단에 크고 굵게 배치
     embed_description = (
+        f"### {biome_name.upper()}\n"
         f"**Account:** {owner_display}\n"
         f"**Uptime:** {session_duration}\n"
         f"**Started:** {dynamic_time_str}"
     )
 
     new_embed = discord.Embed(
-        title=embed_title,
         description=embed_description,
         color=embed_color
     )
+
+    view = BiomeControlView(link_result[1] if link_result else "https://discord.gg/기본링크")
 
     target_channel = None
 
@@ -305,7 +364,7 @@ async def process_macro_message(message):
             target_channel = bot.get_channel(int(output_row[0]))
 
     if target_channel:
-        sent_message = await target_channel.send(content=mention_text, embed=new_embed)
+        sent_message = await target_channel.send(content=mention_text, embed=new_embed, view=view)
         ACTIVE_BIOME_MESSAGES[(channel_id_str, "default")] = sent_message
 
 @bot.event
