@@ -206,7 +206,7 @@ async def process_macro_message(message):
                         new_desc = old_desc
                     
                     new_embed = discord.Embed(
-                        title=f"{old_embed.title}",
+                        title=old_embed.title,
                         description=new_desc,
                         color=old_embed.color
                     )
@@ -272,16 +272,16 @@ async def process_macro_message(message):
     msg_timestamp = int(message.created_at.timestamp())
     dynamic_time_str = f"<t:{msg_timestamp}:R>"
 
-    # 💡 스크린샷과 똑같이 메인 타이틀(Account, Uptime, Started)은 굵게(**), 값은 일반 폰트로 배치
+    # 💡 스크린샷과 똑같이 타이틀은 대형 폰트로 올리고, 본문 항목들은 볼드/일반 조합으로 배치
+    embed_title = f"Biome Started - {biome_name.upper()}"
     embed_description = (
         f"**Account:** {owner_display}\n"
         f"**Uptime:** {session_duration}\n"
         f"**Started:** {dynamic_time_str}"
     )
 
-    # 💡 바이옴 타이틀 디자인을 스크린샷(`Biome Started - LOST FOREST`) 형태로 매칭
     new_embed = discord.Embed(
-        title=f"Biome Started - {biome_name.upper()}",
+        title=embed_title,
         description=embed_description,
         color=embed_color
     )
