@@ -1,4 +1,4 @@
-import discord
+Import discord
 from discord.ext import commands
 from discord import app_commands
 import sqlite3
@@ -259,17 +259,18 @@ async def process_macro_message(message):
                     old_desc = old_embed.description
                     
                     if "(사라짐)" not in old_desc:
-                        new_desc = re.sub(r"(Started:\s*<t:\d+:R>)", r"\1 (사라짐)", old_desc)
+                        new_desc = re.sub(r"(감지 시간:\s*<t:\d+:R>)", r"\1 (사라짐)", old_desc)
                         if "(사라짐)" not in new_desc:
-                            new_desc = re.sub(r"Started:.*", "Started: (사라짐)", old_desc)
+                            new_desc = re.sub(r"감지 시간:.*", "감지 시간: (사라짐)", old_desc)
                     else:
                         new_desc = old_desc
                     
                     new_embed = discord.Embed(
+                        title=f"{old_embed.title}",
                         description=new_desc,
                         color=old_embed.color
                     )
-                    await sent_msg.edit(content=sent_msg.content, embed=new_embed, view=sent_msg.view)
+                    await sent_msg.edit(content=sent_msg.content, embed=new_embed)
             except Exception as e:
                 print(f"메시지 수정 중 오류 발생: {e}")
             
@@ -309,12 +310,16 @@ async def process_macro_message(message):
 
     mention_text = f"<@&{role_to_mention}>" if role_to_mention and role_to_mention.isdigit() else ""
 
+    # 💡 가장 최근에 /링크등록을 마친 유저의 정보를 가져와서 멘션으로 매칭
+    user_private_url = "https://discord.gg/기본링크"
     owner_display = "@알수없는-사용자"
+
     cursor.execute("SELECT discord_id, server_url FROM user_links ORDER BY rowid DESC LIMIT 1")
     link_result = cursor.fetchone()
     
     if link_result:
-        discord_id, owner_display = link_result[0], f"<@{discord_id}>"
+        discord_id, user_private_url = link_result[0], link_result[1]
+        owner_display = f"<@{discord_id}>"
 
     embed_color = 0x00A2FF
     for key, color_val in BIOME_COLORS.items():
@@ -325,25 +330,25 @@ async def process_macro_message(message):
     session_match = re.search(r"Session\s+Time\s*:\s*([^\n\r]+)", clean_text, re.IGNORECASE)
     if not session_match:
         session_match = re.search(r"Uptime\s*:\s*([^\n\r]+)", clean_text, re.IGNORECASE)
-    session_duration = session_match.group(1).strip() if session_match else "2m 2s"
+    session_duration = session_match.group(1).strip() if session_match else "4h 34m"
 
     msg_timestamp = int(message.created_at.timestamp())
     dynamic_time_str = f"<t:{msg_timestamp}:R>"
 
-    # 💡 바이옴 이름을 ### 헤더로 처리하여 description 최상단에 크고 굵게 배치
+    # 💡 [핵심 수정] 필드(fields)를 아예 쓰지 않고 description에만 담아 원본처럼 콤팩트한 박스 형태로 출력
     embed_description = (
-        f"### {biome_name.upper()}\n"
-        f"**Account:** {owner_display}\n"
-        f"**Uptime:** {session_duration}\n"
-        f"**Started:** {dynamic_time_str}"
+        f"유저: {owner_display}\n"
+        f"감지 시간: {dynamic_time_str}\n"
+        f"서버 시간: {session_duration}"
     )
 
     new_embed = discord.Embed(
+        title=f"{biome_name}",
         description=embed_description,
         color=embed_color
     )
 
-    view = BiomeControlView(link_result[1] if link_result else "https://discord.gg/기본링크")
+    view = BiomeControlView(user_private_url)
 
     target_channel = None
 
