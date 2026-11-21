@@ -245,12 +245,7 @@ async def process_macro_message(message):
         return
 
     full_text = extract_all_text(message)
-    print(f"[감지된 원본 텍스트]\n{full_text}\n{'-'*30}")
-
     clean_text = re.sub(r"[*#>`]", "", full_text)
-
-    account_match = re.search(r"Account\s*:\s*([^\n\r]+)", clean_text, re.IGNORECASE)
-    roblox_username = account_match.group(1).strip() if account_match else None
 
     end_pattern = r"Biome\s+Ended|Ended|Strange\s+Controller\s+was\s+used|Biome\s+Randomizer\s+was\s+used"
     
@@ -315,6 +310,7 @@ async def process_macro_message(message):
 
     mention_text = f"<@&{role_to_mention}>" if role_to_mention and role_to_mention.isdigit() else ""
 
+    # 💡 가장 최근에 /링크등록을 마친 유저의 정보를 가져와서 멘션으로 매칭
     user_private_url = "https://discord.gg/기본링크"
     owner_display = "@알수없는-사용자"
 
@@ -339,11 +335,11 @@ async def process_macro_message(message):
     msg_timestamp = int(message.created_at.timestamp())
     dynamic_time_str = f"<t:{msg_timestamp}:R>"
 
-    # 💡 가로 폭이 너무 길게 늘어지지 않고 스크린샷처럼 아담하게 잡히도록 공백/줄바꿈 최적화
+    # 💡 [핵심 수정] 필드(fields)를 아예 쓰지 않고 description에만 담아 원본처럼 콤팩트한 박스 형태로 출력
     embed_description = (
-        f"Macroer: {owner_display}\n"
-        f"Detection Time: {dynamic_time_str}\n"
-        f"Session Duration: {session_duration}"
+        f"유저: {owner_display}\n"
+        f"감지 시간: {dynamic_time_str}\n"
+        f"서버 시간: {session_duration}"
     )
 
     new_embed = discord.Embed(
@@ -374,7 +370,7 @@ async def process_macro_message(message):
 
     if target_channel:
         sent_message = await target_channel.send(content=mention_text, embed=new_embed, view=view)
-        ACTIVE_BIOME_MESSAGES[(channel_id_str, roblox_username or "default")] = sent_message
+        ACTIVE_BIOME_MESSAGES[(channel_id_str, "default")] = sent_message
 
 @bot.event
 async def on_message(message):
