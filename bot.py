@@ -93,7 +93,7 @@ async def on_ready():
     print(f"현재 등록된 감지 채널 ID 목록: {saved_sources}")
     print("----------------------------------------")
 
-@bot.tree.command(name="채널등록", description="현재 채널을 매크로 감지 채널로 영구 등록합니다.")
+@bot.tree.command(name="채널등록", description="[관리자 전용] 현재 채널을 매크로 감지 채널로 등록합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def 채널등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
@@ -101,7 +101,7 @@ async def 채널등록(interaction: discord.Interaction):
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **매크로 감지 채널**로 등록되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="출력방등록", description="현재 채널을 일반 알림 출력방으로 설정합니다.")
+@bot.tree.command(name="출력방등록", description="[관리자 전용] 현재 채널을 일반 알림 출력방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def 출력방등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
@@ -110,16 +110,16 @@ async def 출력방등록(interaction: discord.Interaction):
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **출력방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="rare방등록", description="현재 채널을 특수 바이옴 전용 방으로 설정합니다.")
+@bot.tree.command(name="특별방등록", description="[관리자 전용] 현재 채널을 특수 바이옴 전용 방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def rare방등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
     cursor.execute("DELETE FROM rare_channel")
     cursor.execute("INSERT INTO rare_channel (channel_id) VALUES (?)", (channel_id,))
     conn.commit()
-    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **특수 바이옴 전용 방**으로 설정되었습니다!", ephemeral=True)
+    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **특별 바이옴 출력방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="이벤트방등록", description="현재 채널을 이벤트 바이옴 전용 방으로 설정합니다.")
+@bot.tree.command(name="이벤트방등록", description="[관리자 전용] 현재 채널을 이벤트 바이옴 전용 방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def 이벤트방등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
@@ -128,7 +128,7 @@ async def 이벤트방등록(interaction: discord.Interaction):
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **이벤트 바이옴 전용 방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="제스터방등록", description="현재 채널을 제스터 상인 전용 방으로 설정합니다.")
+@bot.tree.command(name="제스터방등록", description="[관리자 전용] 현재 채널을 제스터 상인 전용 방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def 제스터방등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
@@ -137,7 +137,7 @@ async def 제스터방등록(interaction: discord.Interaction):
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **제스터 상인 전용 방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="마리방등록", description="현재 채널을 마리 상인 전용 방으로 설정합니다.")
+@bot.tree.command(name="마리방등록", description="[관리자 전용] 현재 채널을 마리 상인 전용 방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def 마리방등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
@@ -146,7 +146,7 @@ async def 마리방등록(interaction: discord.Interaction):
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **마리 상인 전용 방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="링크등록", description="로블록스 닉네임과 비공개 서버 링크를 연동합니다.")
+@bot.tree.command(name="링크등록", description="[月 전용] 로블록스 닉네임과 비공개 서버 링크를 연동합니다.")
 @app_commands.describe(roblox_name="로블록스 닉네임", url="비공개 서버 링크 URL")
 async def 링크등록(interaction: discord.Interaction, roblox_name: str, url: str):
     discord_id = interaction.user.id
