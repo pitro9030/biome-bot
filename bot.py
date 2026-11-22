@@ -44,7 +44,7 @@ ROLE_SPECIAL_GROUP_2 = "1566090108170670342"
 ROLE_JESTER = "1562830501461631016"
 ROLE_MARI = "1562830587549712414"
 
-# 🔑 채널등록을 허용할 디스코드 역할 ID 설정
+# 🔑 /채널등록 명령어를 허용할 디스코드 역할 ID
 ALLOWED_CHANNEL_ROLE_ID = 1562649163290771547
 
 BIOME_ROLE_CONFIG = {
@@ -96,7 +96,7 @@ async def on_ready():
     print(f"현재 등록된 감지 채널 ID 목록: {saved_sources}")
     print("----------------------------------------")
 
-# 🔒 특정 역할을 가진 유저만 채널등록을 사용할 수 있도록 체크하는 함수
+# 🔒 지정된 역할만 /채널등록을 사용할 수 있도록 검사하는 함수
 def has_allowed_role():
     async def predicate(interaction: discord.Interaction):
         role = interaction.guild.get_role(ALLOWED_CHANNEL_ROLE_ID)
@@ -106,7 +106,7 @@ def has_allowed_role():
         return False
     return app_commands.check(predicate)
 
-@bot.tree.command(name="채널등록", description="[STAFF] 현재 채널을 매크로 감지 채널로 등록합니다.")
+@bot.tree.command(name="채널등록", description="현재 채널을 매크로 감지 채널로 등록합니다.")
 @has_allowed_role()
 async def 채널등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
@@ -114,7 +114,7 @@ async def 채널등록(interaction: discord.Interaction):
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **매크로 감지 채널**로 등록되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="출력방등록", description="[오너] 현재 채널을 일반 알림 출력방으로 설정합니다.")
+@bot.tree.command(name="출력방등록", description="현재 채널을 일반 알림 출력방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def 출력방등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
@@ -123,7 +123,7 @@ async def 출력방등록(interaction: discord.Interaction):
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **일반 알림 출력방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="레어방등록", description="[오너] 현재 채널을 레어 바이옴 전용 방으로 설정합니다.")
+@bot.tree.command(name="rare방등록", description="현재 채널을 특수 바이옴 전용 방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def rare방등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
@@ -132,7 +132,7 @@ async def rare방등록(interaction: discord.Interaction):
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **특수 바이옴 전용 방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="이벤트방등록", description="[오너] 현재 채널을 이벤트 바이옴 전용 방으로 설정합니다.")
+@bot.tree.command(name="이벤트방등록", description="현재 채널을 이벤트 바이옴 전용 방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def 이벤트방등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
@@ -141,7 +141,7 @@ async def 이벤트방등록(interaction: discord.Interaction):
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **이벤트 바이옴 전용 방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="제스터방등록", description="[오너] 현재 채널을 제스터 상인 전용 방으로 설정합니다.")
+@bot.tree.command(name="제스터방등록", description="현재 채널을 제스터 상인 전용 방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def 제스터방등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
@@ -150,7 +150,7 @@ async def 제스터방등록(interaction: discord.Interaction):
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **제스터 상인 전용 방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="마리방등록", description="[오너] 현재 채널을 마리 상인 전용 방으로 설정합니다.")
+@bot.tree.command(name="마리방등록", description="현재 채널을 마리 상인 전용 방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def 마리방등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
@@ -159,8 +159,8 @@ async def 마리방등록(interaction: discord.Interaction):
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **마리 상인 전용 방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="링크등록", description="[月] 로블록스 닉네임(디플닉X)과 비공개 서버 링크를 연동합니다.")
-@app_commands.describe(roblox_name="로블록스 닉네임(본래 닉네임)", url="비공개 서버 링크 URL")
+@bot.tree.command(name="링크등록", description="로블록스 닉네임과 비공개 서버 링크를 연동합니다.")
+@app_commands.describe(roblox_name="로블록스 닉네임", url="비공개 서버 링크 URL")
 async def 링크등록(interaction: discord.Interaction, roblox_name: str, url: str):
     await interaction.response.defer(ephemeral=True)
     discord_id = interaction.user.id
@@ -171,7 +171,7 @@ async def 링크등록(interaction: discord.Interaction, roblox_name: str, url: 
         cursor.execute("DELETE FROM user_links WHERE discord_id = ? OR LOWER(TRIM(roblox_name)) = LOWER(?)", (discord_id, clean_name))
         cursor.execute("INSERT INTO user_links (discord_id, roblox_name, server_url) VALUES (?, ?, ?)", (discord_id, clean_name, clean_url))
         conn.commit()
-        await interaction.followup.send(f"✅ **{clean_name}**님의 서버 링크와 디스코드 계정({interaction.user.mention})이 연동되었습니다!", ephemeral=True)
+        await interaction.followup.send(f"✅ **{clean_name}**님의 서버 링크와 디스코드 계정({interaction.user.mention})이 성공적으로 연동되었습니다!", ephemeral=True)
     except Exception as e:
         print(f"링크등록 DB 오류: {e}")
         await interaction.followup.send(f"❌ 링크 등록 중 오류가 발생했습니다: {e}", ephemeral=True)
@@ -327,8 +327,23 @@ async def process_macro_message(message):
 
     clean_text = re.sub(r"[*#>`]", "", full_text)
 
+    # 1. 일반적인 Account : 닉네임 형식 탐색
     account_match = re.search(r"Account\s*:\s*([^\n\r]+)", clean_text, re.IGNORECASE)
     roblox_username = account_match.group(1).strip() if account_match else None
+
+    # 2. 로블록스 프로필 링크 형태 탐색 (마크다운 또는 일반 URL)
+    if not roblox_username:
+        profile_match = re.search(r"roblox\.com/users/(\d+)/profile", full_text, re.IGNORECASE)
+        if not profile_match:
+            profile_match = re.search(r"\[([^\]]+)\]\(https?://(?:www\.)?roblox\.com/users/\d+/profile\)", full_text, re.IGNORECASE)
+            if profile_match:
+                roblox_username = profile_match.group(1).strip()
+
+    # 3. 최후의 보루: 웹훅 작성자 이름 활용 (단, Acrux 등 시스템 이름이 아닐 때만)
+    if not roblox_username and message.webhook_id:
+        if message.author and message.author.name:
+            if "acrux" not in message.author.name.lower():
+                roblox_username = message.author.name
 
     # 상인 감지 로직
     merchant_match = re.search(r"Merchant\s+Arrived\s*[-–—:]\s*([^\n\r]+)", clean_text, re.IGNORECASE)
@@ -530,11 +545,17 @@ async def process_macro_message(message):
 
 @bot.event
 async def on_message(message):
-    await process_macro_message(message)
+    try:
+        await process_macro_message(message)
+    except Exception as e:
+        print(f"매크로 메시지 처리 중 오류 발생: {e}")
 
 @bot.event
 async def on_message_edit(before, after):
-    await process_macro_message(after)
+    try:
+        await process_macro_message(after)
+    except Exception as e:
+        print(f"매크로 메시지 수정 처리 중 오류 발생: {e}")
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 if TOKEN:
