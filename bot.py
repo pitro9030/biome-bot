@@ -4,6 +4,7 @@ from discord import app_commands
 import sqlite3
 import re
 import os
+import asyncio
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -23,33 +24,13 @@ bot = MyBot()
 conn = sqlite3.connect("bot_database.db", check_same_thread=False)
 cursor = conn.cursor()
 
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS source_channels (
-        channel_id TEXT PRIMARY KEY
-    )
-""")
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS output_channel (
-        channel_id TEXT
-    )
-""")
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS rare_channel (
-        channel_id TEXT
-    )
-""")
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS event_channel (
-        channel_id TEXT
-    )
-""")
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS user_links (
-        discord_id INTEGER,
-        roblox_name TEXT,
-        server_url TEXT
-    )
-""")
+cursor.execute("CREATE TABLE IF NOT EXISTS source_channels (channel_id TEXT PRIMARY KEY)")
+cursor.execute("CREATE TABLE IF NOT EXISTS output_channel (channel_id TEXT)")
+cursor.execute("CREATE TABLE IF NOT EXISTS rare_channel (channel_id TEXT)")
+cursor.execute("CREATE TABLE IF NOT EXISTS event_channel (channel_id TEXT)")
+cursor.execute("CREATE TABLE IF NOT EXISTS jester_channel (channel_id TEXT)")
+cursor.execute("CREATE TABLE IF NOT EXISTS mari_channel (channel_id TEXT)")
+cursor.execute("CREATE TABLE IF NOT EXISTS user_links (discord_id INTEGER, roblox_name TEXT, server_url TEXT)")
 conn.commit()
 
 ACTIVE_BIOME_MESSAGES = {}
@@ -60,23 +41,26 @@ ACTIVE_BIOME_MESSAGES = {}
 ROLE_SPECIAL_GROUP_1 = "1562830412332404766"
 ROLE_SPECIAL_GROUP_2 = "1566090108170670342"
 
+ROLE_JESTER = "여기에_제스터_역할ID_입력"
+ROLE_MARI = "여기에_마리_역할ID_입력"
+
 BIOME_ROLE_CONFIG = {
     "Hell": "1562828440443293816",
     "Heaven": "1562828596471533631",
     "Null": "1567368669053460540",
     "Lost Forest": "1562828696178528417",
     "Sandstorm": "1567368780261228736",
+    "Sand Storm": "1567368780261228736",
     "Starfall": "1562830216001228850",
     "Corruption": "1562830718659469383",
     "Singularity": "1562830295559053432",
     "The Radiant Forest": "1562828821340880936",
 }
 
-# 💡 모든 바이옴 색상 전면 재정비 및 점검 완료
 BIOME_COLORS = {
     "hell": 0xCC0000,
     "heaven": 0xFFCC33,
-    "null": 0xCCCCCC,
+    "null": 0x999999,  
     "dreamspace": 0xFF99FF,
     "cyberspace": 0x6666FF,
     "glitch": 0x003300,
@@ -85,13 +69,16 @@ BIOME_COLORS = {
     "lost forest": 0x66CC00,
     "graveyard": 0x333333,
     "sandstorm": 0xCC9966,
+    "sand storm": 0xCC9966,
     "starfall": 0x333399,
     "corruption": 0x663399,
     "singularity": 0x660000,
     "the radiant forest": 0xCC99FF,
     "windy": 0x99FFFF,
     "snowy": 0xFFFFFF,
-    "rainy": 0x0066CC
+    "rainy": 0x0066CC,
+    "jester": 0x6633CC,
+    "mari": 0x99FF66
 }
 
 CUSTOM_CHECK_EMOJI = discord.PartialEmoji(name="check", id=1572517054693777588)
@@ -112,25 +99,25 @@ async def 채널등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
     cursor.execute("INSERT OR IGNORE INTO source_channels (channel_id) VALUES (?)", (channel_id,))
     conn.commit()
-    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **매크로 감지 채널**로 영구 등록되었습니다!", ephemeral=True)
+    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **매크로 감지 채널**로 등록되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="출력방등록", description="현재 채널을 일반 알림 출력방(test방)으로 설정합니다.")
+@bot.tree.command(name="출력방등록", description="현재 채널을 일반 알림 출력방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def 출력방등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
     cursor.execute("DELETE FROM output_channel")
     cursor.execute("INSERT INTO output_channel (channel_id) VALUES (?)", (channel_id,))
     conn.commit()
-    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **일반 알림 출력방(test방)**으로 설정되었습니다!", ephemeral=True)
+    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **출력방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="rare방등록", description="현재 채널을 특수 바이옴 전용 방(rare방)으로 설정합니다.")
+@bot.tree.command(name="rare방등록", description="현재 채널을 특수 바이옴 전용 방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def rare방등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
     cursor.execute("DELETE FROM rare_channel")
     cursor.execute("INSERT INTO rare_channel (channel_id) VALUES (?)", (channel_id,))
     conn.commit()
-    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **특수 바이옴 전용 방(rare방)**으로 설정되었습니다!", ephemeral=True)
+    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **특수 바이옴 전용 방**으로 설정되었습니다!", ephemeral=True)
 
 @bot.tree.command(name="이벤트방등록", description="현재 채널을 이벤트 바이옴 전용 방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
@@ -140,6 +127,24 @@ async def 이벤트방등록(interaction: discord.Interaction):
     cursor.execute("INSERT INTO event_channel (channel_id) VALUES (?)", (channel_id,))
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **이벤트 바이옴 전용 방**으로 설정되었습니다!", ephemeral=True)
+
+@bot.tree.command(name="제스터방등록", description="현재 채널을 제스터 상인 전용 방으로 설정합니다.")
+@app_commands.checks.has_permissions(administrator=True)
+async def 제스터방등록(interaction: discord.Interaction):
+    channel_id = str(interaction.channel.id)
+    cursor.execute("DELETE FROM jester_channel")
+    cursor.execute("INSERT INTO jester_channel (channel_id) VALUES (?)", (channel_id,))
+    conn.commit()
+    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **제스터 상인 전용 방**으로 설정되었습니다!", ephemeral=True)
+
+@bot.tree.command(name="마리방등록", description="현재 채널을 마리 상인 전용 방으로 설정합니다.")
+@app_commands.checks.has_permissions(administrator=True)
+async def 마리방등록(interaction: discord.Interaction):
+    channel_id = str(interaction.channel.id)
+    cursor.execute("DELETE FROM mari_channel")
+    cursor.execute("INSERT INTO mari_channel (channel_id) VALUES (?)", (channel_id,))
+    conn.commit()
+    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **마리 상인 전용 방**으로 설정되었습니다!", ephemeral=True)
 
 @bot.tree.command(name="링크등록", description="로블록스 닉네임과 비공개 서버 링크를 연동합니다.")
 @app_commands.describe(roblox_name="로블록스 닉네임", url="비공개 서버 링크 URL")
@@ -241,6 +246,42 @@ def extract_all_text(message) -> str:
 
     return "\n".join(parts)
 
+def format_session_time(raw_time: str) -> str:
+    raw_time = raw_time.strip()
+    hms_match = re.search(r"^(\d+):(\d+):(\d+)$", raw_time)
+    if hms_match:
+        h, m, s = int(hms_match.group(1)), int(hms_match.group(2)), int(hms_match.group(3))
+        return f"{h}h {m}m {s}s"
+
+    days, hours, minutes, seconds = 0, 0, 0, 0
+    d_match = re.search(r"(\d+)\s*d", raw_time, re.IGNORECASE)
+    h_match = re.search(r"(\d+)\s*h", raw_time, re.IGNORECASE)
+    m_match = re.search(r"(\d+)\s*m", raw_time, re.IGNORECASE)
+    s_match = re.search(r"(\d+)\s*s", raw_time, re.IGNORECASE)
+
+    if d_match: days = int(d_match.group(1))
+    if h_match: hours = int(h_match.group(1))
+    if m_match: minutes = int(m_match.group(1))
+    if s_match: seconds = int(s_match.group(1))
+
+    if not (d_match or h_match or m_match or s_match):
+        return raw_time
+
+    parts = []
+    if days > 0:
+        parts.append(f"{days}d")
+    if hours > 0 or days > 0:
+        parts.append(f"{hours}h")
+    if minutes > 0 or hours > 0 or days > 0:
+        parts.append(f"{minutes}m")
+    
+    if days == 0 and seconds > 0:
+        parts.append(f"{seconds}s")
+    elif days == 0 and not parts:
+        parts.append("0s")
+
+    return " ".join(parts)
+
 async def process_macro_message(message):
     if message.author == bot.user:
         return
@@ -257,6 +298,99 @@ async def process_macro_message(message):
 
     account_match = re.search(r"Account\s*:\s*([^\n\r]+)", clean_text, re.IGNORECASE)
     roblox_username = account_match.group(1).strip() if account_match else None
+
+    # 상인 감지 로직
+    merchant_match = re.search(r"Merchant\s+Arrived\s*[-–—:]\s*([^\n\r]+)", clean_text, re.IGNORECASE)
+    if merchant_match:
+        raw_merchant = merchant_match.group(1).strip().lower()
+        
+        merchant_name = None
+        role_to_mention = None
+        target_table = None
+
+        if "jester" in raw_merchant:
+            merchant_name = "제스터"
+            role_to_mention = ROLE_JESTER
+            target_table = "jester_channel"
+        elif "mari" in raw_merchant:
+            merchant_name = "마리"
+            role_to_mention = ROLE_MARI
+            target_table = "mari_channel"
+
+        if merchant_name:
+            mention_text = f"<@&{role_to_mention}>" if role_to_mention and role_to_mention.isdigit() else ""
+
+            user_private_url = "https://discord.gg/기본링크"
+            owner_display = "@알수없는-사용자"
+
+            if roblox_username:
+                cursor.execute("SELECT discord_id, server_url FROM user_links WHERE roblox_name = ?", (roblox_username,))
+                result = cursor.fetchone()
+                if result:
+                    discord_id, user_private_url = result[0], result[1]
+                    if discord_id:
+                        owner_display = f"<@{discord_id}>"
+
+            embed_color = BIOME_COLORS.get(merchant_name.lower(), 0x00A2FF)
+
+            session_match = re.search(r"(?:Session\s+Time|Uptime)\s*:\s*([^\n\r]+)", clean_text, re.IGNORECASE)
+            raw_session = session_match.group(1).strip() if session_match else "4h 34m"
+            session_duration = format_session_time(raw_session)
+
+            msg_timestamp = int(message.created_at.timestamp())
+            dynamic_time_str = f"<t:{msg_timestamp}:R>"
+
+            embed_description = (
+                f"유저: {owner_display}\n"
+                f"감지 시간: {dynamic_time_str}\n"
+                f"서버 시간: {session_duration}"
+            )
+
+            new_embed = discord.Embed(
+                title=f"{merchant_name}",
+                description=embed_description,
+                color=embed_color
+            )
+
+            view = BiomeControlView(user_private_url)
+
+            target_channel = None
+            if target_table:
+                cursor.execute(f"SELECT channel_id FROM {target_table} LIMIT 1")
+                row = cursor.fetchone()
+                if row:
+                    target_channel = bot.get_channel(int(row[0]))
+            
+            if not target_channel:
+                cursor.execute("SELECT channel_id FROM output_channel LIMIT 1")
+                output_row = cursor.fetchone()
+                if output_row:
+                    target_channel = bot.get_channel(int(output_row[0]))
+
+            if target_channel:
+                sent_message = await target_channel.send(content=mention_text, embed=new_embed, view=view)
+                
+                async def expire_merchant():
+                    await asyncio.sleep(160)
+                    try:
+                        if sent_message.embeds:
+                            old_embed = sent_message.embeds[0]
+                            old_desc = old_embed.description
+                            new_desc = re.sub(r"(감지 시간:\s*<t:\d+:R>)(.*)", r"\1 (사라짐)", old_desc)
+                            if "(사라짐)" not in new_desc:
+                                new_desc = re.sub(r"감지 시간:.*", "감지 시간: (사라짐)", old_desc)
+                            
+                            new_embed = discord.Embed(
+                                title=f"{old_embed.title}",
+                                description=new_desc,
+                                color=old_embed.color
+                            )
+                            await sent_message.edit(content=sent_message.content, embed=new_embed)
+                    except Exception as e:
+                        print(f"상인 메시지 자동 만료 처리 중 오류: {e}")
+
+                bot.loop.create_task(expire_merchant())
+            return
 
     end_pattern = r"Biome\s+Ended|Ended|Strange\s+Controller\s+was\s+used|Biome\s+Randomizer\s+was\s+used"
     
@@ -295,6 +429,8 @@ async def process_macro_message(message):
 
     if not biome_name:
         biome_name = "Unknown"
+    else:
+        biome_name = biome_name.upper()
 
     exclude_biomes = ["normal"]
     if biome_name.lower() in exclude_biomes:
@@ -335,8 +471,9 @@ async def process_macro_message(message):
             embed_color = color_val
             break
 
-    session_match = re.search(r"Session\s+Time\s*:\s*([^\n\r]+)", clean_text, re.IGNORECASE)
-    session_duration = session_match.group(1).strip() if session_match else "4h 34m"
+    session_match = re.search(r"(?:Session\s+Time|Uptime)\s*:\s*([^\n\r]+)", clean_text, re.IGNORECASE)
+    raw_session = session_match.group(1).strip() if session_match else "4h 34m"
+    session_duration = format_session_time(raw_session)
 
     msg_timestamp = int(message.created_at.timestamp())
     dynamic_time_str = f"<t:{msg_timestamp}:R>"
