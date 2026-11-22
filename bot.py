@@ -30,7 +30,7 @@ cursor.execute("CREATE TABLE IF NOT EXISTS rare_channel (channel_id TEXT)")
 cursor.execute("CREATE TABLE IF NOT EXISTS event_channel (channel_id TEXT)")
 cursor.execute("CREATE TABLE IF NOT EXISTS jester_channel (channel_id TEXT)")
 cursor.execute("CREATE TABLE IF NOT EXISTS mari_channel (channel_id TEXT)")
-cursor.execute("CREATE TABLE IF NOT EXISTS user_links (discord_id INTEGER, roblox_name TEXT, server_url TEXT)")
+cursor.execute("CREATE TABLE IF NOT EXISTS user_links (discord_id INTEGER PRIMARY KEY, roblox_name TEXT, server_url TEXT)")
 conn.commit()
 
 ACTIVE_BIOME_MESSAGES = {}
@@ -43,6 +43,9 @@ ROLE_SPECIAL_GROUP_2 = "1566090108170670342"
 
 ROLE_JESTER = "1562830501461631016"
 ROLE_MARI = "1562830587549712414"
+
+# 🔑 채널등록을 허용할 디스코드 역할 ID 설정
+ALLOWED_CHANNEL_ROLE_ID = 1562649163290771547
 
 BIOME_ROLE_CONFIG = {
     "Hell": "1562828440443293816",
@@ -93,42 +96,52 @@ async def on_ready():
     print(f"현재 등록된 감지 채널 ID 목록: {saved_sources}")
     print("----------------------------------------")
 
-@bot.tree.command(name="채널등록", description="[관리자] 현재 채널을 매크로 감지 채널로 등록합니다.")
-@app_commands.checks.has_permissions(administrator=True)
+# 🔒 특정 역할을 가진 유저만 채널등록을 사용할 수 있도록 체크하는 함수
+def has_allowed_role():
+    async def predicate(interaction: discord.Interaction):
+        role = interaction.guild.get_role(ALLOWED_CHANNEL_ROLE_ID)
+        if role and role in interaction.user.roles:
+            return True
+        await interaction.response.send_message("❌ 이 명령어를 사용할 수 있는 권한이 없습니다.", ephemeral=True)
+        return False
+    return app_commands.check(predicate)
+
+@bot.tree.command(name="채널등록", description="[STAFF] 현재 채널을 매크로 감지 채널로 등록합니다.")
+@has_allowed_role()
 async def 채널등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
     cursor.execute("INSERT OR IGNORE INTO source_channels (channel_id) VALUES (?)", (channel_id,))
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **매크로 감지 채널**로 등록되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="출력방등록", description="[관리자] 현재 채널을 일반 바이옴 출력방으로 설정합니다.")
+@bot.tree.command(name="출력방등록", description="[오너] 현재 채널을 일반 알림 출력방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def 출력방등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
     cursor.execute("DELETE FROM output_channel")
     cursor.execute("INSERT INTO output_channel (channel_id) VALUES (?)", (channel_id,))
     conn.commit()
-    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **일반 바이옴 출력방**으로 설정되었습니다!", ephemeral=True)
+    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **일반 알림 출력방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="레어방등록", description="[관리자] 현재 채널을 레어 바이옴 출력방으로 설정합니다.")
+@bot.tree.command(name="레어방등록", description="[오너] 현재 채널을 레어 바이옴 전용 방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def rare방등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
     cursor.execute("DELETE FROM rare_channel")
     cursor.execute("INSERT INTO rare_channel (channel_id) VALUES (?)", (channel_id,))
     conn.commit()
-    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **레어 바이옴 출력방**으로 설정되었습니다!", ephemeral=True)
+    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **특수 바이옴 전용 방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="이벤트방등록", description="[관리자] 현재 채널을 이벤트 바이옴 출력방으로 설정합니다.")
+@bot.tree.command(name="이벤트방등록", description="[오너] 현재 채널을 이벤트 바이옴 전용 방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def 이벤트방등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
     cursor.execute("DELETE FROM event_channel")
     cursor.execute("INSERT INTO event_channel (channel_id) VALUES (?)", (channel_id,))
     conn.commit()
-    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **이벤트 바이옴 출력방**으로 설정되었습니다!", ephemeral=True)
+    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **이벤트 바이옴 전용 방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="제스터방등록", description="[관리자] 현재 채널을 제스터 상인 전용 방으로 설정합니다.")
+@bot.tree.command(name="제스터방등록", description="[오너] 현재 채널을 제스터 상인 전용 방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def 제스터방등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
@@ -137,7 +150,7 @@ async def 제스터방등록(interaction: discord.Interaction):
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **제스터 상인 전용 방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="마리방등록", description="[관리자] 현재 채널을 마리 상인 전용 방으로 설정합니다.")
+@bot.tree.command(name="마리방등록", description="[오너] 현재 채널을 마리 상인 전용 방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def 마리방등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
@@ -146,17 +159,22 @@ async def 마리방등록(interaction: discord.Interaction):
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **마리 상인 전용 방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="링크등록", description="[月] 로블록스 닉네임과 비공개 서버 링크를 연동합니다.")
-@app_commands.describe(roblox_name="로블록스 닉네임", url="비공개 서버 링크 URL")
+@bot.tree.command(name="링크등록", description="[月] 로블록스 닉네임(디플닉X)과 비공개 서버 링크를 연동합니다.")
+@app_commands.describe(roblox_name="로블록스 닉네임(본래 닉네임)", url="비공개 서버 링크 URL")
 async def 링크등록(interaction: discord.Interaction, roblox_name: str, url: str):
+    await interaction.response.defer(ephemeral=True)
     discord_id = interaction.user.id
-    cursor.execute("SELECT * FROM user_links WHERE roblox_name = ?", (roblox_name,))
-    if cursor.fetchone():
-        cursor.execute("UPDATE user_links SET discord_id = ?, server_url = ? WHERE roblox_name = ?", (discord_id, url, roblox_name))
-    else:
-        cursor.execute("INSERT INTO user_links (discord_id, roblox_name, server_url) VALUES (?, ?, ?)", (discord_id, roblox_name, url))
-    conn.commit()
-    await interaction.response.send_message(f"✅ **{roblox_name}**님의 비공개 서버 링크와 디스코드 계정({interaction.user.mention})이 연동되었습니다!", ephemeral=True)
+    clean_name = roblox_name.strip()
+    clean_url = url.strip()
+
+    try:
+        cursor.execute("DELETE FROM user_links WHERE discord_id = ? OR LOWER(TRIM(roblox_name)) = LOWER(?)", (discord_id, clean_name))
+        cursor.execute("INSERT INTO user_links (discord_id, roblox_name, server_url) VALUES (?, ?, ?)", (discord_id, clean_name, clean_url))
+        conn.commit()
+        await interaction.followup.send(f"✅ **{clean_name}**님의 서버 링크와 디스코드 계정({interaction.user.mention})이 연동되었습니다!", ephemeral=True)
+    except Exception as e:
+        print(f"링크등록 DB 오류: {e}")
+        await interaction.followup.send(f"❌ 링크 등록 중 오류가 발생했습니다: {e}", ephemeral=True)
 
 class BiomeControlView(discord.ui.View):
     def __init__(self, server_url: str):
@@ -166,9 +184,10 @@ class BiomeControlView(discord.ui.View):
         self.checked_users = set()
         self.crossed_users = set()
         
+        valid_url = server_url if server_url.startswith(("http://", "https://")) else "https://discord.gg/기본링크"
         self.add_item(discord.ui.Button(
             label="Join Server",
-            url=server_url,
+            url=valid_url,
             style=discord.ButtonStyle.link,
             row=0
         ))
@@ -282,6 +301,18 @@ def format_session_time(raw_time: str) -> str:
         seconds = total_seconds % 60
         return f"{hours}h {minutes}m {seconds}s"
 
+def get_user_link_info(roblox_username: str):
+    if not roblox_username:
+        return "@알수없는-사용자", "https://discord.gg/기본링크"
+    
+    cursor.execute("SELECT discord_id, server_url FROM user_links WHERE LOWER(TRIM(roblox_name)) = LOWER(?)", (roblox_username.strip(),))
+    result = cursor.fetchone()
+    if result:
+        discord_id, server_url = result[0], result[1]
+        owner_display = f"<@{discord_id}>" if discord_id else "@알수없는-사용자"
+        return owner_display, server_url
+    return "@알수없는-사용자", "https://discord.gg/기본링크"
+
 async def process_macro_message(message):
     if message.author == bot.user:
         return
@@ -292,7 +323,7 @@ async def process_macro_message(message):
         return
 
     full_text = extract_all_text(message)
-    print(f"[감지된 원본 텍스트]\n{full_text}\n{'-'*30}")
+    print(f"[감지된 원본 텍스트 - 채널 {channel_id_str}]\n{full_text}\n{'-'*30}")
 
     clean_text = re.sub(r"[*#>`]", "", full_text)
 
@@ -319,17 +350,7 @@ async def process_macro_message(message):
 
         if merchant_name:
             mention_text = f"<@&{role_to_mention}>" if role_to_mention and role_to_mention.isdigit() else ""
-
-            user_private_url = "https://discord.gg/기본링크"
-            owner_display = "@알수없는-사용자"
-
-            if roblox_username:
-                cursor.execute("SELECT discord_id, server_url FROM user_links WHERE roblox_name = ?", (roblox_username,))
-                result = cursor.fetchone()
-                if result:
-                    discord_id, user_private_url = result[0], result[1]
-                    if discord_id:
-                        owner_display = f"<@{discord_id}>"
+            owner_display, user_private_url = get_user_link_info(roblox_username)
 
             embed_color = BIOME_COLORS.get(merchant_name.lower(), 0x00A2FF)
 
@@ -396,7 +417,7 @@ async def process_macro_message(message):
     end_pattern = r"Biome\s+Ended|Ended|Strange\s+Controller\s+was\s+used|Biome\s+Randomizer\s+was\s+used"
     
     if re.search(end_pattern, clean_text, re.IGNORECASE):
-        tracking_key = (channel_id_str, roblox_username)
+        tracking_key = (channel_id_str, roblox_username.lower() if roblox_username else None)
         if tracking_key in ACTIVE_BIOME_MESSAGES:
             sent_msg = ACTIVE_BIOME_MESSAGES[tracking_key]
             try:
@@ -454,17 +475,7 @@ async def process_macro_message(message):
                 break
 
     mention_text = f"<@&{role_to_mention}>" if role_to_mention and role_to_mention.isdigit() else ""
-
-    user_private_url = "https://discord.gg/기본링크"
-    owner_display = "@알수없는-사용자"
-
-    if roblox_username:
-        cursor.execute("SELECT discord_id, server_url FROM user_links WHERE roblox_name = ?", (roblox_username,))
-        result = cursor.fetchone()
-        if result:
-            discord_id, user_private_url = result[0], result[1]
-            if discord_id:
-                owner_display = f"<@{discord_id}>"
+    owner_display, user_private_url = get_user_link_info(roblox_username)
 
     embed_color = 0x00A2FF
     for key, color_val in BIOME_COLORS.items():
@@ -515,7 +526,7 @@ async def process_macro_message(message):
     if target_channel:
         sent_message = await target_channel.send(content=mention_text, embed=new_embed, view=view)
         if roblox_username:
-            ACTIVE_BIOME_MESSAGES[(channel_id_str, roblox_username)] = sent_message
+            ACTIVE_BIOME_MESSAGES[(channel_id_str, roblox_username.lower())] = sent_message
 
 @bot.event
 async def on_message(message):
