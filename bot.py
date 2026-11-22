@@ -60,7 +60,7 @@ BIOME_ROLE_CONFIG = {
 BIOME_COLORS = {
     "hell": 0xCC0000,
     "heaven": 0xFFCC33,
-    "null": 0x999999,  
+    "null": 0x999999,
     "dreamspace": 0xFF99FF,
     "cyberspace": 0x6666FF,
     "glitch": 0x003300,
@@ -93,7 +93,7 @@ async def on_ready():
     print(f"현재 등록된 감지 채널 ID 목록: {saved_sources}")
     print("----------------------------------------")
 
-@bot.tree.command(name="채널등록", description="[관리자 전용] 현재 채널을 매크로 감지 채널로 등록합니다.")
+@bot.tree.command(name="채널등록", description="[관리자] 현재 채널을 매크로 감지 채널로 등록합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def 채널등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
@@ -101,34 +101,34 @@ async def 채널등록(interaction: discord.Interaction):
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **매크로 감지 채널**로 등록되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="출력방등록", description="[관리자 전용] 현재 채널을 일반 알림 출력방으로 설정합니다.")
+@bot.tree.command(name="출력방등록", description="[관리자] 현재 채널을 일반 바이옴 출력방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def 출력방등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
     cursor.execute("DELETE FROM output_channel")
     cursor.execute("INSERT INTO output_channel (channel_id) VALUES (?)", (channel_id,))
     conn.commit()
-    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **출력방**으로 설정되었습니다!", ephemeral=True)
+    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **일반 바이옴 출력방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="특별방등록", description="[관리자 전용] 현재 채널을 특수 바이옴 전용 방으로 설정합니다.")
+@bot.tree.command(name="레어방등록", description="[관리자] 현재 채널을 레어 바이옴 출력방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def rare방등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
     cursor.execute("DELETE FROM rare_channel")
     cursor.execute("INSERT INTO rare_channel (channel_id) VALUES (?)", (channel_id,))
     conn.commit()
-    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **특별 바이옴 출력방**으로 설정되었습니다!", ephemeral=True)
+    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **레어 바이옴 출력방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="이벤트방등록", description="[관리자 전용] 현재 채널을 이벤트 바이옴 전용 방으로 설정합니다.")
+@bot.tree.command(name="이벤트방등록", description="[관리자] 현재 채널을 이벤트 바이옴 출력방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def 이벤트방등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
     cursor.execute("DELETE FROM event_channel")
     cursor.execute("INSERT INTO event_channel (channel_id) VALUES (?)", (channel_id,))
     conn.commit()
-    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **이벤트 바이옴 전용 방**으로 설정되었습니다!", ephemeral=True)
+    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **이벤트 바이옴 출력방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="제스터방등록", description="[관리자 전용] 현재 채널을 제스터 상인 전용 방으로 설정합니다.")
+@bot.tree.command(name="제스터방등록", description="[관리자] 현재 채널을 제스터 상인 전용 방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def 제스터방등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
@@ -137,7 +137,7 @@ async def 제스터방등록(interaction: discord.Interaction):
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **제스터 상인 전용 방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="마리방등록", description="[관리자 전용] 현재 채널을 마리 상인 전용 방으로 설정합니다.")
+@bot.tree.command(name="마리방등록", description="[관리자] 현재 채널을 마리 상인 전용 방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def 마리방등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
@@ -146,7 +146,7 @@ async def 마리방등록(interaction: discord.Interaction):
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **마리 상인 전용 방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="링크등록", description="[月 전용] 로블록스 닉네임과 비공개 서버 링크를 연동합니다.")
+@bot.tree.command(name="링크등록", description="[月] 로블록스 닉네임과 비공개 서버 링크를 연동합니다.")
 @app_commands.describe(roblox_name="로블록스 닉네임", url="비공개 서버 링크 URL")
 async def 링크등록(interaction: discord.Interaction, roblox_name: str, url: str):
     discord_id = interaction.user.id
@@ -248,39 +248,39 @@ def extract_all_text(message) -> str:
 
 def format_session_time(raw_time: str) -> str:
     raw_time = raw_time.strip()
-    hms_match = re.search(r"^(\d+):(\d+):(\d+)$", raw_time)
-    if hms_match:
-        h, m, s = int(hms_match.group(1)), int(hms_match.group(2)), int(hms_match.group(3))
-        return f"{h}h {m}m {s}s"
+    total_seconds = 0
 
-    days, hours, minutes, seconds = 0, 0, 0, 0
-    d_match = re.search(r"(\d+)\s*d", raw_time, re.IGNORECASE)
-    h_match = re.search(r"(\d+)\s*h", raw_time, re.IGNORECASE)
-    m_match = re.search(r"(\d+)\s*m", raw_time, re.IGNORECASE)
-    s_match = re.search(r"(\d+)\s*s", raw_time, re.IGNORECASE)
+    hms_colon = re.search(r"^(\d+):(\d+):(\d+)$", raw_time)
+    if hms_colon:
+        h = int(hms_colon.group(1))
+        m = int(hms_colon.group(2))
+        s = int(hms_colon.group(3))
+        total_seconds = h * 3600 + m * 60 + s
+    else:
+        d_match = re.search(r"(\d+)\s*d", raw_time, re.IGNORECASE)
+        h_match = re.search(r"(\d+)\s*(?:hr|h)", raw_time, re.IGNORECASE)
+        m_match = re.search(r"(\d+)\s*m", raw_time, re.IGNORECASE)
+        s_match = re.search(r"(\d+)\s*s", raw_time, re.IGNORECASE)
 
-    if d_match: days = int(d_match.group(1))
-    if h_match: hours = int(h_match.group(1))
-    if m_match: minutes = int(m_match.group(1))
-    if s_match: seconds = int(s_match.group(1))
+        if d_match: total_seconds += int(d_match.group(1)) * 86400
+        if h_match: total_seconds += int(h_match.group(1)) * 3600
+        if m_match: total_seconds += int(m_match.group(1)) * 60
+        if s_match: total_seconds += int(s_match.group(1))
 
-    if not (d_match or h_match or m_match or s_match):
-        return raw_time
+        if not (d_match or h_match or m_match or s_match):
+            return raw_time
 
-    parts = []
-    if days > 0:
-        parts.append(f"{days}d")
-    if hours > 0 or days > 0:
-        parts.append(f"{hours}h")
-    if minutes > 0 or hours > 0 or days > 0:
-        parts.append(f"{minutes}m")
-    
-    if days == 0 and seconds > 0:
-        parts.append(f"{seconds}s")
-    elif days == 0 and not parts:
-        parts.append("0s")
-
-    return " ".join(parts)
+    if total_seconds >= 86400:
+        days = total_seconds // 86400
+        remainder = total_seconds % 86400
+        hours = remainder // 3600
+        minutes = (remainder % 3600) // 60
+        return f"{days}d {hours}h {minutes}m"
+    else:
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        seconds = total_seconds % 60
+        return f"{hours}h {minutes}m {seconds}s"
 
 async def process_macro_message(message):
     if message.author == bot.user:
@@ -341,13 +341,14 @@ async def process_macro_message(message):
             dynamic_time_str = f"<t:{msg_timestamp}:R>"
 
             embed_description = (
-                f"유저: {owner_display}\n"
-                f"감지 시간: {dynamic_time_str}\n"
-                f"서버 시간: {session_duration}"
+                f"# {merchant_name}\n"
+                f"**유저** : {owner_display}\n"
+                f"**감지 시간** : {dynamic_time_str}\n"
+                f"**서버 시간** : {session_duration}"
             )
 
             new_embed = discord.Embed(
-                title=f"{merchant_name}",
+                title="",
                 description=embed_description,
                 color=embed_color
             )
@@ -376,12 +377,12 @@ async def process_macro_message(message):
                         if sent_message.embeds:
                             old_embed = sent_message.embeds[0]
                             old_desc = old_embed.description
-                            new_desc = re.sub(r"(감지 시간:\s*<t:\d+:R>)(.*)", r"\1 (사라짐)", old_desc)
+                            new_desc = re.sub(r"(\*\*감지 시간\*\*\s*:\s*<t:\d+:R>)(.*)", r"\1 (사라짐)", old_desc)
                             if "(사라짐)" not in new_desc:
-                                new_desc = re.sub(r"감지 시간:.*", "감지 시간: (사라짐)", old_desc)
+                                new_desc = re.sub(r"\*\*감지 시간\*\*\s*:\s*.*", "**감지 시간** : (사라짐)", old_desc)
                             
                             new_embed = discord.Embed(
-                                title=f"{old_embed.title}",
+                                title="",
                                 description=new_desc,
                                 color=old_embed.color
                             )
@@ -403,12 +404,12 @@ async def process_macro_message(message):
                     old_embed = sent_msg.embeds[0]
                     old_desc = old_embed.description
                     
-                    new_desc = re.sub(r"(감지 시간:\s*<t:\d+:R>)(.*)", r"\1 (사라짐)", old_desc)
+                    new_desc = re.sub(r"(\*\*감지 시간\*\*\s*:\s*<t:\d+:R>)(.*)", r"\1 (사라짐)", old_desc)
                     if "(사라짐)" not in new_desc:
-                        new_desc = re.sub(r"감지 시간:.*", "감지 시간: (사라짐)", old_desc)
+                        new_desc = re.sub(r"\*\*감지 시간\*\*\s*:\s*.*", "**감지 시간** : (사라짐)", old_desc)
                     
                     new_embed = discord.Embed(
-                        title=f"{old_embed.title}",
+                        title="",
                         description=new_desc,
                         color=old_embed.color
                     )
@@ -479,13 +480,14 @@ async def process_macro_message(message):
     dynamic_time_str = f"<t:{msg_timestamp}:R>"
 
     embed_description = (
-        f"유저: {owner_display}\n"
-        f"감지 시간: {dynamic_time_str}\n"
-        f"서버 시간: {session_duration}"
+        f"# {biome_name}\n"
+        f"**유저** : {owner_display}\n"
+        f"**감지 시간** : {dynamic_time_str}\n"
+        f"**서버 시간** : {session_duration}"
     )
 
     new_embed = discord.Embed(
-        title=f"{biome_name}",
+        title="",
         description=embed_description,
         color=embed_color
     )
