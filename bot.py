@@ -1,3 +1,6 @@
+/링크삭제와 /채널삭제 명령어 모두 지정된 역할 ID 보유자들만 사용할 수 있도록 보안 검사를 깔끔하게 적용해 두었습니다.
+(링크삭제의 경우 원래 유저 개인이 쓰는 기능이었지만 요청하신 대로 관리자/특정 역할 전용 관리 명령어로 변경하여 해당 역할들만 실행할 수 있도록 제한했습니다!)
+아래 최종 전체 코드를 복사해서 봇 파일에 붙여넣고 레일웨이를 재시작해 주세요.
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -48,8 +51,11 @@ ROLE_SPECIAL_GROUP_2 = "1566090108170670342"
 ROLE_JESTER = "1562830501461631016"
 ROLE_MARI = "1562830587549712414"
 
-# 🔑 /채널등록 및 /채널삭제 명령어를 허용할 디스코드 역할 ID
-ALLOWED_CHANNEL_ROLE_ID = 1562649163290771547
+# 🔑 주요 관리 명령어를 허용할 디스코드 역할 ID 목록
+ALLOWED_CHANNEL_ROLE_IDS = [
+    1562649163290771547,
+    1562831439802798152
+]
 
 BIOME_ROLE_CONFIG = {
     "Hell": "1562828440443293816",
@@ -100,11 +106,11 @@ async def on_ready():
     print(f"현재 등록된 감지 채널 ID 목록: {saved_sources}")
     print("----------------------------------------")
 
-# 🔒 지정된 역할만 특정 명령어를 사용할 수 있도록 검사하는 함수
+# 🔒 지정된 역할들 중 하나라도 가지고 있는지 검사하는 함수
 def has_allowed_role():
     async def predicate(interaction: discord.Interaction):
-        role = interaction.guild.get_role(ALLOWED_CHANNEL_ROLE_ID)
-        if role and role in interaction.user.roles:
+        user_role_ids = [role.id for role in interaction.user.roles]
+        if any(role_id in user_role_ids for role_id in ALLOWED_CHANNEL_ROLE_IDS):
             return True
         await interaction.response.send_message("❌ 이 명령어를 사용할 수 있는 권한이 없습니다.", ephemeral=True)
         return False
@@ -113,7 +119,7 @@ def has_allowed_role():
 @bot.tree.command(name="도움말", description="봇에서 사용 가능한 명령어와 안내를 확인합니다.")
 async def 도움말_command(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="🤖 밤크로 봇 도움말",
+        title="**✨ 밤크로 도움말 🌙**",
         description="밤크로 명령어 안내입니다.",
         color=0x00A2FF
     )
@@ -123,10 +129,8 @@ async def 도움말_command(interaction: discord.Interaction):
         value=(
             "• `/링크등록 [로블록스닉네임] [서버링크]`\n"
             "  -> 일반 매크로 툴을 사용하는 유저용 연동 명령어\n"
-            "• `/아크링크등록 [로블록스닉네임] [웹훅봇닉네임] [서버링크]`\n"
-            "  -> **아크록스(Acrux Mobile)** 유저 전용 연동 명령어\n"
-            "• `/링크삭제`\n"
-            "  -> 본인이 등록한 모든 서버 링크 연동 데이터 삭제"
+            "• `/아맥등록 [로블록스닉네임] [웹훅봇닉네임] [서버링크]`\n"
+            "  -> **아크룩스(Acrux Mobile)** & **맥 스코프(MacScope)**유저 전용 연동 명령어"
         ),
         inline=False
     )
@@ -136,6 +140,7 @@ async def 도움말_command(interaction: discord.Interaction):
         value=(
             "• `/채널등록` : 스태프 전용 (감지 채널 등록)\n"
             "• `/채널삭제` : 스태프 전용 (현재 채널 감지 해제)\n"
+            "• `/링크삭제` : 스태프 전용\n"
             "• `/출력방등록` : 관리자 전용 (일반 알림 방)\n"
             "• `/레어방등록` : 관리자 전용 (특수 바이옴 방)\n"
             "• `/이벤트방등록` : 관리자 전용 (이벤트 바이옴 방)\n"
@@ -155,7 +160,6 @@ async def 채널등록(interaction: discord.Interaction):
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **매크로 감지 채널**로 등록되었습니다!", ephemeral=True)
 
-# [추가] 지정된 역할 보유자만 사용 가능한 채널 삭제 명령어
 @bot.tree.command(name="채널삭제", description="현재 채널을 매크로 감지 채널 목록에서 제거합니다.")
 @has_allowed_role()
 async def 채널삭제(interaction: discord.Interaction):
@@ -214,7 +218,7 @@ async def 마리방등록(interaction: discord.Interaction):
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **마리 상인 전용 방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="링크등록", description="로블록스 닉네임(디플닉 X)과 비공개 서버 링크를 연동합니다.")
+@bot.tree.command(name="링크등록", description="로블록스 닉네임과 비공개 서버 링크를 연동합니다.")
 @app_commands.describe(roblox_name="로블록스 닉네임", url="비공개 서버 링크 URL")
 async def 링크등록(interaction: discord.Interaction, roblox_name: str, url: str):
     await interaction.response.defer(ephemeral=True)
@@ -231,7 +235,7 @@ async def 링크등록(interaction: discord.Interaction, roblox_name: str, url: 
         print(f"링크등록 DB 오류: {e}")
         await interaction.followup.send(f"❌ 링크 등록 중 오류가 발생했습니다: {e}", ephemeral=True)
 
-@bot.tree.command(name="아크링크등록", description="[아크룩스 유저 전용] 로블록스 닉네임(디플닉 X), 웹훅 봇 닉네임, 서버 링크를 연동합니다.")
+@bot.tree.command(name="아맥등록", description="[아크 & 맥 전용] 로블록스 닉네임, 웹훅 봇 닉네임, 서버 링크를 연동합니다.")
 @app_commands.describe(roblox_name="실제 로블록스 닉네임", webhook_name="웹훅에 표시되는 봇 닉네임", url="비공개 서버 링크 URL")
 async def 아크록스링크등록(interaction: discord.Interaction, roblox_name: str, webhook_name: str, url: str):
     await interaction.response.defer(ephemeral=True)
@@ -246,7 +250,7 @@ async def 아크록스링크등록(interaction: discord.Interaction, roblox_name
                        (discord_id, clean_roblox, clean_webhook, clean_url))
         conn.commit()
         await interaction.followup.send(
-            f"✅ **[아크록스 연동 완료]**\n"
+            f"✅ **[아크 & 맥 스코프 연동 완료]**\n"
             f"- 디스코드 계정: {interaction.user.mention}\n"
             f"- 실제 로블록스: **{clean_roblox}**\n"
             f"- 웹훅 닉네임: **{clean_webhook}**", 
@@ -254,12 +258,15 @@ async def 아크록스링크등록(interaction: discord.Interaction, roblox_name
         )
     except Exception as e:
         print(f"아크록스 링크등록 DB 오류: {e}")
-        await interaction.followup.send(f"❌ 아크룩스 링크 등록 중 오류가 발생했습니다: {e}", ephemeral=True)
+        await interaction.followup.send(f"❌ [아크 & 맥 스코프] 링크 등록 중 오류가 발생했습니다: {e}", ephemeral=True)
 
-@bot.tree.command(name="링크삭제", description="본인이 등록한 비공개 서버 링크 연동 정보를 삭제합니다.")
-async def 링크삭제(interaction: discord.Interaction):
+# [수정] 지정된 역할 보유자만 사용 가능한 링크 삭제 명령어
+@bot.tree.command(name="링크삭제", description="지정된 유저의 비공개 서버 링크 연동 정보를 삭제합니다.")
+@app_commands.describe(target_user="삭제할 링크의 디스코드 유저")
+@has_allowed_role()
+async def 링크삭제(interaction: discord.Interaction, target_user: discord.User):
     await interaction.response.defer(ephemeral=True)
-    discord_id = interaction.user.id
+    discord_id = target_user.id
 
     try:
         cursor.execute("DELETE FROM user_links WHERE discord_id = ?", (discord_id,))
@@ -271,9 +278,9 @@ async def 링크삭제(interaction: discord.Interaction):
         conn.commit()
 
         if deleted_normal > 0 or deleted_acrux > 0:
-            await interaction.followup.send(f"🗑️ {interaction.user.mention}님의 등록된 서버 링크 데이터가 모두 삭제되었습니다.", ephemeral=True)
+            await interaction.followup.send(f"🗑️ {target_user.mention}님의 등록된 서버 링크 데이터가 삭제되었습니다.", ephemeral=True)
         else:
-            await interaction.followup.send("ℹ️ 등록되어 있는 서버 링크 데이터가 없습니다.", ephemeral=True)
+            await interaction.followup.send(f"ℹ️ {target_user.mention}님의 등록된 서버 링크 데이터가 없습니다.", ephemeral=True)
     except Exception as e:
         print(f"링크삭제 DB 오류: {e}")
         await interaction.followup.send(f"❌ 링크 삭제 중 오류가 발생했습니다: {e}", ephemeral=True)
@@ -683,3 +690,4 @@ if TOKEN:
     bot.run(TOKEN)
 else:
     print("❌ 오류: DISCORD_TOKEN 환경 변수가 설정되지 않았습니다.")
+
