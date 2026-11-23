@@ -37,7 +37,7 @@ conn.commit()
 
 ACTIVE_BIOME_MESSAGES = {}
 RECENT_ALERTS = {}
-ACTIVE_BIOME_SIGNATURES = {}  # 🛡️ [추가] (유저/웹훅, 바이옴이름, 서버시간) 조합을 저장하여 완벽한 중복 감지
+ACTIVE_BIOME_SIGNATURES = {}
 
 # ==========================================
 # ⚙️ [설정 구역] 
@@ -111,7 +111,7 @@ def has_allowed_role():
 @bot.tree.command(name="도움말", description="봇에서 사용 가능한 명령어와 안내를 확인합니다.")
 async def 도움말_command(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="🤖 밤크로 봇 도움말",
+        title="🤖 **밤크로** 봇 도움말",
         description="바이옴 및 상인 감지 봇의 명령어 안내입니다.",
         color=0x00A2FF
     )
@@ -416,8 +416,7 @@ async def process_macro_message(message):
     raw_session = session_match.group(1).strip() if session_match else "4h 34m"
     session_duration = format_session_time(raw_session)
 
-    # 🛡️ [추가 필터] 동일 유저가 동일 바이옴명 + 동일 서버 시간(Uptime)으로 이미 알림을 보냈다면 무시
-    # 바이옴 이름 또는 상인 이름 추출 시도
+    # 이벤트/바이옴 이름 추출
     detected_event_name = None
     merchant_match = re.search(r"Merchant\s+Arrived\s*[-–—:]\s*([^\n\r]+)", clean_text, re.IGNORECASE)
     biome_match = re.search(r"Biome\s+Started\s*[-–—:]\s*([^\n\r]+)", clean_text, re.IGNORECASE)
@@ -431,7 +430,7 @@ async def process_macro_message(message):
         signature = (tracking_key_base, detected_event_name, session_duration)
         if not re.search(end_pattern, clean_text, re.IGNORECASE):
             if signature in ACTIVE_BIOME_SIGNATURES:
-                print(f"🛡️ [중복 차단] {tracking_key_base님의 {detected_event_name} (서버 시간: {session_duration}) 이미 처리된 동일 로그 무시됨.")
+                print(f"🛡️ [중복 차단] {tracking_key_base}님의 {detected_event_name} (서버 시간: {session_duration}) 이미 처리된 동일 로그 무시됨.")
                 return
             ACTIVE_BIOME_SIGNATURES[signature] = channel_id_str
 
@@ -527,7 +526,6 @@ async def process_macro_message(message):
             
             del ACTIVE_BIOME_MESSAGES[tracking_key]
         
-        # 시그니처 정리
         keys_to_del = [k for k in ACTIVE_BIOME_SIGNATURES if k[0] == tracking_key_base]
         for k in keys_to_del:
             del ACTIVE_BIOME_SIGNATURES[k]
