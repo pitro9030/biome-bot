@@ -116,8 +116,8 @@ def has_allowed_role():
 @bot.tree.command(name="도움말", description="봇에서 사용 가능한 명령어와 안내를 확인합니다.")
 async def 도움말_command(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="**✨ 밤크로 도움말 🌙**",
-        description="밤크로 명령어 안내입니다.",
+        title="🤖 밤크로 봇 도움말",
+        description="바이옴 및 상인 감지 봇의 명령어 안내입니다.",
         color=0x00A2FF
     )
     
@@ -126,8 +126,8 @@ async def 도움말_command(interaction: discord.Interaction):
         value=(
             "• `/링크등록 [로블록스닉네임] [서버링크]`\n"
             "  -> 일반 매크로 툴을 사용하는 유저용 연동 명령어\n"
-            "• `/아맥등록 [로블록스닉네임] [웹훅봇닉네임] [서버링크]`\n"
-            "  -> **아크룩스(Acrux Mobile)** & **맥 스코프(MacScope)**유저 전용 연동 명령어"
+            "• `/아크록스링크등록 [로블록스닉네임] [웹훅봇닉네임] [서버링크]`\n"
+            "  -> **아크록스(Acrux Mobile)** 유저 전용 연동 명령어"
         ),
         inline=False
     )
@@ -137,7 +137,7 @@ async def 도움말_command(interaction: discord.Interaction):
         value=(
             "• `/채널등록` : 스태프 전용 (감지 채널 등록)\n"
             "• `/채널삭제` : 스태프 전용 (현재 채널 감지 해제)\n"
-            "• `/링크삭제` : 스태프 전용\n"
+            "• `/링크삭제` : 스태프 전용 (특정 유저 서버 링크 삭제)\n"
             "• `/출력방등록` : 관리자 전용 (일반 알림 방)\n"
             "• `/레어방등록` : 관리자 전용 (특수 바이옴 방)\n"
             "• `/이벤트방등록` : 관리자 전용 (이벤트 바이옴 방)\n"
@@ -232,7 +232,7 @@ async def 링크등록(interaction: discord.Interaction, roblox_name: str, url: 
         print(f"링크등록 DB 오류: {e}")
         await interaction.followup.send(f"❌ 링크 등록 중 오류가 발생했습니다: {e}", ephemeral=True)
 
-@bot.tree.command(name="아맥등록", description="[아크 & 맥 전용] 로블록스 닉네임, 웹훅 봇 닉네임, 서버 링크를 연동합니다.")
+@bot.tree.command(name="아크록스링크등록", description="아크록스(맥) 유저 전용: 로블록스 닉네임, 웹훅 봇 닉네임, 서버 링크를 연동합니다.")
 @app_commands.describe(roblox_name="실제 로블록스 닉네임", webhook_name="웹훅에 표시되는 봇 닉네임", url="비공개 서버 링크 URL")
 async def 아크록스링크등록(interaction: discord.Interaction, roblox_name: str, webhook_name: str, url: str):
     await interaction.response.defer(ephemeral=True)
@@ -247,7 +247,7 @@ async def 아크록스링크등록(interaction: discord.Interaction, roblox_name
                        (discord_id, clean_roblox, clean_webhook, clean_url))
         conn.commit()
         await interaction.followup.send(
-            f"✅ **[아크 & 맥 스코프 연동 완료]**\n"
+            f"✅ **[아크록스(맥) 연동 완료]**\n"
             f"- 디스코드 계정: {interaction.user.mention}\n"
             f"- 실제 로블록스: **{clean_roblox}**\n"
             f"- 웹훅 닉네임: **{clean_webhook}**", 
@@ -255,7 +255,7 @@ async def 아크록스링크등록(interaction: discord.Interaction, roblox_name
         )
     except Exception as e:
         print(f"아크록스 링크등록 DB 오류: {e}")
-        await interaction.followup.send(f"❌ [아크 & 맥 스코프] 링크 등록 중 오류가 발생했습니다: {e}", ephemeral=True)
+        await interaction.followup.send(f"❌ 아크록스(맥) 링크 등록 중 오류가 발생했습니다: {e}", ephemeral=True)
 
 # [수정] 지정된 역할 보유자만 사용 가능한 링크 삭제 명령어
 @bot.tree.command(name="링크삭제", description="지정된 유저의 비공개 서버 링크 연동 정보를 삭제합니다.")
@@ -687,4 +687,3 @@ if TOKEN:
     bot.run(TOKEN)
 else:
     print("❌ 오류: DISCORD_TOKEN 환경 변수가 설정되지 않았습니다.")
-
