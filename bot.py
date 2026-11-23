@@ -111,11 +111,10 @@ def has_allowed_role():
 @bot.tree.command(name="도움말", description="봇에서 사용 가능한 명령어와 안내를 확인합니다.")
 async def 도움말_command(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="🤖 **밤크로** 봇 도움말",
+        title="🤖 밤크로 봇 도움말",
         description="바이옴 및 상인 감지 봇의 명령어 안내입니다.",
         color=0x00A2FF
     )
-    
     embed.add_field(
         name="🔗 유저 링크 관리 명령어",
         value=(
@@ -125,7 +124,6 @@ async def 도움말_command(interaction: discord.Interaction):
         ),
         inline=False
     )
-    
     embed.add_field(
         name="🛠️ 권한 필요 명령어",
         value=(
@@ -134,7 +132,6 @@ async def 도움말_command(interaction: discord.Interaction):
         ),
         inline=False
     )
-    
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @bot.tree.command(name="채널등록", description="현재 채널을 매크로 감지 채널로 등록합니다.")
@@ -385,6 +382,20 @@ def get_user_link_info(roblox_username: str, webhook_author_name: str = None):
 
     return "@알수없는-사용자", "https://discord.gg/기본링크"
 
+async def expire_message_to_ended(sent_msg):
+    try:
+        if sent_msg.embeds:
+            old_embed = sent_msg.embeds[0]
+            old_desc = old_embed.description
+            new_desc = re.sub(r"(\*\*감지 시간\*\*\s*:\s*<t:\d+:R>)(.*)", r"\1 (사라짐)", old_desc)
+            if "(사라짐)" not in new_desc:
+                new_desc = re.sub(r"\*\*감지 시간\*\*\s*:\s*.*", "**감지 시간** : (사라짐)", old_desc)
+            
+            new_embed = discord.Embed(title="", description=new_desc, color=old_embed.color)
+            await sent_msg.edit(content=sent_msg.content, embed=new_embed)
+    except Exception as e:
+        print(f"메시지 사라짐 처리 오류: {e}")
+
 async def process_macro_message(message):
     if message.author == bot.user:
         return
@@ -399,7 +410,8 @@ async def process_macro_message(message):
 
     clean_text = re.sub(r"[*#>`]", "", full_text)
 
-    end_pattern = r"Biome\s+Ended|Ended|Strange\s+Controller\s+was\s+used|Biome\s+Randomizer\s+was\s+used"
+    # 🛡️ 종료 패턴에 Biome Started - Normal 추가
+    end_pattern = r"Biome\s+Ended|Ended|Strange\s+Controller\s+was\s+used|Biome\s+Randomizer\s+was\s+used|Biome\s+Started\s*[-–—:]\s*Normal"
     
     account_match = re.search(r"Account\s*:\s*([^\n\r]+)", clean_text, re.IGNORECASE)
     roblox_username = account_match.group(1).strip() if account_match else None
@@ -409,14 +421,13 @@ async def process_macro_message(message):
         if "acrux" not in message.author.name.lower():
             webhook_author_name = message.author.name.strip()
 
+    tracking_key = (channel_id_str, webhook_author_name or (roblox_username.lower() if roblox_username else None))
     tracking_key_base = webhook_author_name or (roblox_username.lower() if roblox_username else None)
 
-    # 세션 시간 추출 (중복 판단용)
     session_match = re.search(r"(?:Session\s+Time|Uptime)\s*:\s*([^\n\r]+)", clean_text, re.IGNORECASE)
     raw_session = session_match.group(1).strip() if session_match else "4h 34m"
     session_duration = format_session_time(raw_session)
 
-    # 이벤트/바이옴 이름 추출
     detected_event_name = None
     merchant_match = re.search(r"Merchant\s+Arrived\s*[-–—:]\s*([^\n\r]+)", clean_text, re.IGNORECASE)
     biome_match = re.search(r"Biome\s+Started\s*[-–—:]\s*([^\n\r]+)", clean_text, re.IGNORECASE)
@@ -430,9 +441,16 @@ async def process_macro_message(message):
         signature = (tracking_key_base, detected_event_name, session_duration)
         if not re.search(end_pattern, clean_text, re.IGNORECASE):
             if signature in ACTIVE_BIOME_SIGNATURES:
-                print(f"🛡️ [중복 차단] {tracking_key_base}님의 {detected_event_name} (서버 시간: {session_duration}) 이미 처리된 동일 로그 무시됨.")
+                print(f"🛡️ [중복 차단] {tracking_key_base}님의 {detected_event_name} 이미 처리된 동일 로그 무시됨.")
                 return
             ACTIVE_BIOME_SIGNATURES[signature] = channel_id_str
+
+    # 새로운 시작/상인 로그(Normal 제외)가 들어왔을 때 기존 알림이 있다면 즉시 (사라짐) 처리
+    if (merchant_match or biome_match) and not re.search(end_pattern, clean_text, re.IGNORECASE):
+        if tracking_key in ACTIVE_BIOME_MESSAGES:
+            old_msg = ACTIVE_BIOME_MESSAGES[tracking_key]
+            await expire_message_to_ended(old_msg)
+            del ACTIVE_BIOME_MESSAGES[tracking_key]
 
     if merchant_match:
         raw_merchant = merchant_match.group(1).strip().lower()
@@ -484,19 +502,13 @@ async def process_macro_message(message):
 
             if target_channel:
                 sent_message = await target_channel.send(content=mention_text, embed=new_embed, view=view)
+                ACTIVE_BIOME_MESSAGES[tracking_key] = sent_message
                 
                 async def expire_merchant():
                     await asyncio.sleep(160)
                     try:
-                        if sent_message.embeds:
-                            old_embed = sent_message.embeds[0]
-                            old_desc = old_embed.description
-                            new_desc = re.sub(r"(\*\*감지 시간\*\*\s*:\s*<t:\d+:R>)(.*)", r"\1 (사라짐)", old_desc)
-                            if "(사라짐)" not in new_desc:
-                                new_desc = re.sub(r"\*\*감지 시간\*\*\s*:\s*.*", "**감지 시간** : (사라짐)", old_desc)
-                            
-                            new_embed = discord.Embed(title="", description=new_desc, color=old_embed.color)
-                            await sent_message.edit(content=sent_message.content, embed=new_embed)
+                        if sent_message in ACTIVE_BIOME_MESSAGES.values() or sent_message.embeds:
+                            await expire_message_to_ended(sent_message)
                     except Exception as e:
                         print(f"상인 만료 오류: {e}")
                     finally:
@@ -506,24 +518,11 @@ async def process_macro_message(message):
                 bot.loop.create_task(expire_merchant())
             return
     
+    # 종료 패턴(Biome Ended 또는 Biome Started - Normal 등) 감지 시 기존 알림을 (사라짐)으로 변경
     if re.search(end_pattern, clean_text, re.IGNORECASE):
-        tracking_key = (channel_id_str, webhook_author_name or (roblox_username.lower() if roblox_username else None))
         if tracking_key in ACTIVE_BIOME_MESSAGES:
             sent_msg = ACTIVE_BIOME_MESSAGES[tracking_key]
-            try:
-                if sent_msg.embeds:
-                    old_embed = sent_msg.embeds[0]
-                    old_desc = old_embed.description
-                    
-                    new_desc = re.sub(r"(\*\*감지 시간\*\*\s*:\s*<t:\d+:R>)(.*)", r"\1 (사라짐)", old_desc)
-                    if "(사라짐)" not in new_desc:
-                        new_desc = re.sub(r"\*\*감지 시간\*\*\s*:\s*.*", "**감지 시간** : (사라짐)", old_desc)
-                    
-                    new_embed = discord.Embed(title="", description=new_desc, color=old_embed.color)
-                    await sent_msg.edit(content=sent_msg.content, embed=new_embed)
-            except Exception as e:
-                print(f"메시지 수정 오류: {e}")
-            
+            await expire_message_to_ended(sent_msg)
             del ACTIVE_BIOME_MESSAGES[tracking_key]
         
         keys_to_del = [k for k in ACTIVE_BIOME_SIGNATURES if k[0] == tracking_key_base]
@@ -531,10 +530,10 @@ async def process_macro_message(message):
             del ACTIVE_BIOME_SIGNATURES[k]
         return
 
-    if not re.search(r"Biome\s+Started", clean_text, re.IGNORECASE):
+    if not biome_match:
         return
 
-    biome_name = biome_match.group(1).strip().upper() if biome_match else "UNKNOWN"
+    biome_name = biome_match.group(1).strip().upper()
 
     exclude_biomes = ["normal"]
     if biome_name.lower() in exclude_biomes:
@@ -594,9 +593,7 @@ async def process_macro_message(message):
 
     if target_channel:
         sent_message = await target_channel.send(content=mention_text, embed=new_embed, view=view)
-        tracking_key = webhook_author_name or (roblox_username.lower() if roblox_username else None)
-        if tracking_key:
-            ACTIVE_BIOME_MESSAGES[(channel_id_str, tracking_key)] = sent_message
+        ACTIVE_BIOME_MESSAGES[tracking_key] = sent_message
 
 @bot.event
 async def on_message(message):
