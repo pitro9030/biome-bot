@@ -6,7 +6,6 @@ import re
 import os
 import asyncio
 import time
-from datetime import datetime, timezone
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -38,6 +37,7 @@ conn.commit()
 
 ACTIVE_BIOME_MESSAGES = {}
 RECENT_ALERTS = {}
+ACTIVE_BIOME_SIGNATURES = {}  # 🛡️ [추가] (유저/웹훅, 바이옴이름, 서버시간) 조합을 저장하여 완벽한 중복 감지
 
 # ==========================================
 # ⚙️ [설정 구역] 
@@ -48,11 +48,7 @@ ROLE_SPECIAL_GROUP_2 = "1566090108170670342"
 ROLE_JESTER = "1562830501461631016"
 ROLE_MARI = "1562830587549712414"
 
-# 🔑 주요 관리 명령어를 허용할 디스코드 역할 ID 목록
-ALLOWED_CHANNEL_ROLE_IDS = [
-    1562649163290771547,
-    1562831439802798152
-]
+ALLOWED_CHANNEL_ROLE_ID = 1562831439802798152
 
 BIOME_ROLE_CONFIG = {
     "Hell": "1562828440443293816",
@@ -103,11 +99,10 @@ async def on_ready():
     print(f"현재 등록된 감지 채널 ID 목록: {saved_sources}")
     print("----------------------------------------")
 
-# 🔒 지정된 역할들 중 하나라도 가지고 있는지 검사하는 함수
 def has_allowed_role():
     async def predicate(interaction: discord.Interaction):
-        user_role_ids = [role.id for role in interaction.user.roles]
-        if any(role_id in user_role_ids for role_id in ALLOWED_CHANNEL_ROLE_IDS):
+        role = interaction.guild.get_role(ALLOWED_CHANNEL_ROLE_ID)
+        if role and role in interaction.user.roles:
             return True
         await interaction.response.send_message("❌ 이 명령어를 사용할 수 있는 권한이 없습니다.", ephemeral=True)
         return False
@@ -125,9 +120,8 @@ async def 도움말_command(interaction: discord.Interaction):
         name="🔗 유저 링크 관리 명령어",
         value=(
             "• `/링크등록 [로블록스닉네임] [서버링크]`\n"
-            "  -> 일반 매크로 툴을 사용하는 유저용 연동 명령어\n"
             "• `/아크록스링크등록 [로블록스닉네임] [웹훅봇닉네임] [서버링크]`\n"
-            "  -> **아크록스(Acrux Mobile)** 유저 전용 연동 명령어"
+            "• `/링크삭제`"
         ),
         inline=False
     )
@@ -135,14 +129,8 @@ async def 도움말_command(interaction: discord.Interaction):
     embed.add_field(
         name="🛠️ 권한 필요 명령어",
         value=(
-            "• `/채널등록` : 스태프 전용 (감지 채널 등록)\n"
-            "• `/채널삭제` : 스태프 전용 (현재 채널 감지 해제)\n"
-            "• `/링크삭제` : 스태프 전용 (특정 유저 서버 링크 삭제)\n"
-            "• `/출력방등록` : 관리자 전용 (일반 알림 방)\n"
-            "• `/레어방등록` : 관리자 전용 (특수 바이옴 방)\n"
-            "• `/이벤트방등록` : 관리자 전용 (이벤트 바이옴 방)\n"
-            "• `/제스터방등록` : 관리자 전용 (제스터 상인 방)\n"
-            "• `/마리방등록` : 관리자 전용 (마리 상인 방)"
+            "• `/채널등록` : 감지 채널 등록\n"
+            "• `/출력방등록` / `/레어방등록` / `/이벤트방등록` / `/제스터방등록` / `/마리방등록`"
         ),
         inline=False
     )
@@ -157,19 +145,6 @@ async def 채널등록(interaction: discord.Interaction):
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **매크로 감지 채널**로 등록되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="채널삭제", description="현재 채널을 매크로 감지 채널 목록에서 제거합니다.")
-@has_allowed_role()
-async def 채널삭제(interaction: discord.Interaction):
-    channel_id = str(interaction.channel.id)
-    cursor.execute("DELETE FROM source_channels WHERE channel_id = ?", (channel_id,))
-    deleted_rows = cursor.rowcount
-    conn.commit()
-
-    if deleted_rows > 0:
-        await interaction.response.send_message(f"🗑️ 이 채널({interaction.channel.mention})이 **매크로 감지 채널** 목록에서 제거되었습니다.", ephemeral=True)
-    else:
-        await interaction.response.send_message(f"ℹ️ 이 채널({interaction.channel.mention})은 감지 채널로 등록되어 있지 않습니다.", ephemeral=True)
-
 @bot.tree.command(name="출력방등록", description="현재 채널을 일반 알림 출력방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def 출력방등록(interaction: discord.Interaction):
@@ -181,7 +156,7 @@ async def 출력방등록(interaction: discord.Interaction):
 
 @bot.tree.command(name="레어방등록", description="현재 채널을 특수 바이옴 전용 방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
-async def rare방등록(interaction: discord.Interaction):
+async def 레어방등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
     cursor.execute("DELETE FROM rare_channel")
     cursor.execute("INSERT INTO rare_channel (channel_id) VALUES (?)", (channel_id,))
@@ -227,12 +202,11 @@ async def 링크등록(interaction: discord.Interaction, roblox_name: str, url: 
         cursor.execute("DELETE FROM user_links WHERE discord_id = ? OR LOWER(TRIM(roblox_name)) = LOWER(?)", (discord_id, clean_name))
         cursor.execute("INSERT INTO user_links (discord_id, roblox_name, server_url) VALUES (?, ?, ?)", (discord_id, clean_name, clean_url))
         conn.commit()
-        await interaction.followup.send(f"✅ **{clean_name}**님의 비공개 서버 링크와 디스코드 계정({interaction.user.mention})이 성공적으로 연동되었습니다!", ephemeral=True)
+        await interaction.followup.send(f"✅ **{clean_name}**님의 비공개 서버 링크가 연동되었습니다!", ephemeral=True)
     except Exception as e:
-        print(f"링크등록 DB 오류: {e}")
-        await interaction.followup.send(f"❌ 링크 등록 중 오류가 발생했습니다: {e}", ephemeral=True)
+        await interaction.followup.send(f"❌ 오류 발생: {e}", ephemeral=True)
 
-@bot.tree.command(name="아크록스링크등록", description="아크록스(맥) 유저 전용: 로블록스 닉네임, 웹훅 봇 닉네임, 서버 링크를 연동합니다.")
+@bot.tree.command(name="아크록스링크등록", description="아크록스 유저 전용 연동")
 @app_commands.describe(roblox_name="실제 로블록스 닉네임", webhook_name="웹훅에 표시되는 봇 닉네임", url="비공개 서버 링크 URL")
 async def 아크록스링크등록(interaction: discord.Interaction, roblox_name: str, webhook_name: str, url: str):
     await interaction.response.defer(ephemeral=True)
@@ -246,41 +220,26 @@ async def 아크록스링크등록(interaction: discord.Interaction, roblox_name
         cursor.execute("INSERT INTO acrux_user_links (discord_id, roblox_name, webhook_name, server_url) VALUES (?, ?, ?, ?)", 
                        (discord_id, clean_roblox, clean_webhook, clean_url))
         conn.commit()
-        await interaction.followup.send(
-            f"✅ **[아크록스(맥) 연동 완료]**\n"
-            f"- 디스코드 계정: {interaction.user.mention}\n"
-            f"- 실제 로블록스: **{clean_roblox}**\n"
-            f"- 웹훅 닉네임: **{clean_webhook}**", 
-            ephemeral=True
-        )
+        await interaction.followup.send(f"✅ **[아크록스 연동 완료]** {clean_roblox} ({clean_webhook})", ephemeral=True)
     except Exception as e:
-        print(f"아크록스 링크등록 DB 오류: {e}")
-        await interaction.followup.send(f"❌ 아크록스(맥) 링크 등록 중 오류가 발생했습니다: {e}", ephemeral=True)
+        await interaction.followup.send(f"❌ 오류 발생: {e}", ephemeral=True)
 
-# [수정] 지정된 역할 보유자만 사용 가능한 링크 삭제 명령어
-@bot.tree.command(name="링크삭제", description="지정된 유저의 비공개 서버 링크 연동 정보를 삭제합니다.")
-@app_commands.describe(target_user="삭제할 링크의 디스코드 유저")
-@has_allowed_role()
-async def 링크삭제(interaction: discord.Interaction, target_user: discord.User):
+@bot.tree.command(name="링크삭제", description="본인이 등록한 서버 링크 연동 정보를 삭제합니다.")
+async def 링크삭제(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
-    discord_id = target_user.id
-
+    discord_id = interaction.user.id
     try:
         cursor.execute("DELETE FROM user_links WHERE discord_id = ?", (discord_id,))
-        deleted_normal = cursor.rowcount
-
+        d1 = cursor.rowcount
         cursor.execute("DELETE FROM acrux_user_links WHERE discord_id = ?", (discord_id,))
-        deleted_acrux = cursor.rowcount
-
+        d2 = cursor.rowcount
         conn.commit()
-
-        if deleted_normal > 0 or deleted_acrux > 0:
-            await interaction.followup.send(f"🗑️ {target_user.mention}님의 등록된 서버 링크 데이터가 삭제되었습니다.", ephemeral=True)
+        if d1 > 0 or d2 > 0:
+            await interaction.followup.send(f"🗑️ 링크 데이터가 모두 삭제되었습니다.", ephemeral=True)
         else:
-            await interaction.followup.send(f"ℹ️ {target_user.mention}님의 등록된 서버 링크 데이터가 없습니다.", ephemeral=True)
+            await interaction.followup.send("ℹ️ 등록된 링크 데이터가 없습니다.", ephemeral=True)
     except Exception as e:
-        print(f"링크삭제 DB 오류: {e}")
-        await interaction.followup.send(f"❌ 링크 삭제 중 오류가 발생했습니다: {e}", ephemeral=True)
+        await interaction.followup.send(f"❌ 오류 발생: {e}", ephemeral=True)
 
 class BiomeControlView(discord.ui.View):
     def __init__(self, server_url: str):
@@ -435,16 +394,13 @@ async def process_macro_message(message):
     if not cursor.fetchone():
         return
 
-    # 생성된 지 3분이 지난 오래된 지연 메시지는 모든 툴 공통으로 무시
-    message_age = (datetime.now(timezone.utc) - message.created_at).total_seconds()
-    if message_age > 180:
-        return
-
     full_text = extract_all_text(message)
     print(f"[감지된 원본 텍스트 - 채널 {channel_id_str}]\n{full_text}\n{'-'*30}")
 
     clean_text = re.sub(r"[*#>`]", "", full_text)
 
+    end_pattern = r"Biome\s+Ended|Ended|Strange\s+Controller\s+was\s+used|Biome\s+Randomizer\s+was\s+used"
+    
     account_match = re.search(r"Account\s*:\s*([^\n\r]+)", clean_text, re.IGNORECASE)
     roblox_username = account_match.group(1).strip() if account_match else None
 
@@ -453,7 +409,32 @@ async def process_macro_message(message):
         if "acrux" not in message.author.name.lower():
             webhook_author_name = message.author.name.strip()
 
+    tracking_key_base = webhook_author_name or (roblox_username.lower() if roblox_username else None)
+
+    # 세션 시간 추출 (중복 판단용)
+    session_match = re.search(r"(?:Session\s+Time|Uptime)\s*:\s*([^\n\r]+)", clean_text, re.IGNORECASE)
+    raw_session = session_match.group(1).strip() if session_match else "4h 34m"
+    session_duration = format_session_time(raw_session)
+
+    # 🛡️ [추가 필터] 동일 유저가 동일 바이옴명 + 동일 서버 시간(Uptime)으로 이미 알림을 보냈다면 무시
+    # 바이옴 이름 또는 상인 이름 추출 시도
+    detected_event_name = None
     merchant_match = re.search(r"Merchant\s+Arrived\s*[-–—:]\s*([^\n\r]+)", clean_text, re.IGNORECASE)
+    biome_match = re.search(r"Biome\s+Started\s*[-–—:]\s*([^\n\r]+)", clean_text, re.IGNORECASE)
+
+    if merchant_match:
+        detected_event_name = merchant_match.group(1).strip().lower()
+    elif biome_match:
+        detected_event_name = biome_match.group(1).strip().lower()
+
+    if tracking_key_base and detected_event_name:
+        signature = (tracking_key_base, detected_event_name, session_duration)
+        if not re.search(end_pattern, clean_text, re.IGNORECASE):
+            if signature in ACTIVE_BIOME_SIGNATURES:
+                print(f"🛡️ [중복 차단] {tracking_key_base님의 {detected_event_name} (서버 시간: {session_duration}) 이미 처리된 동일 로그 무시됨.")
+                return
+            ACTIVE_BIOME_SIGNATURES[signature] = channel_id_str
+
     if merchant_match:
         raw_merchant = merchant_match.group(1).strip().lower()
         
@@ -471,22 +452,10 @@ async def process_macro_message(message):
             target_table = "mari_channel"
 
         if merchant_name:
-            # 10초 도배 방지 쿨타임 적용 (모든 툴 공통)
-            identifier = webhook_author_name or roblox_username or "unknown"
-            alert_key = (channel_id_str, identifier, merchant_name.lower())
-            current_time = time.time()
-            if alert_key in RECENT_ALERTS and current_time - RECENT_ALERTS[alert_key] < 10:
-                return
-            RECENT_ALERTS[alert_key] = current_time
-
             mention_text = f"<@&{role_to_mention}>" if role_to_mention and role_to_mention.isdigit() else ""
             owner_display, user_private_url = get_user_link_info(roblox_username, webhook_author_name)
 
             embed_color = BIOME_COLORS.get(merchant_name.lower(), 0x00A2FF)
-
-            session_match = re.search(r"(?:Session\s+Time|Uptime)\s*:\s*([^\n\r]+)", clean_text, re.IGNORECASE)
-            raw_session = session_match.group(1).strip() if session_match else "4h 34m"
-            session_duration = format_session_time(raw_session)
 
             msg_timestamp = int(message.created_at.timestamp())
             dynamic_time_str = f"<t:{msg_timestamp}:R>"
@@ -498,12 +467,7 @@ async def process_macro_message(message):
                 f"**서버 시간** : {session_duration}"
             )
 
-            new_embed = discord.Embed(
-                title="",
-                description=embed_description,
-                color=embed_color
-            )
-
+            new_embed = discord.Embed(title="", description=embed_description, color=embed_color)
             view = BiomeControlView(user_private_url)
 
             target_channel = None
@@ -532,19 +496,16 @@ async def process_macro_message(message):
                             if "(사라짐)" not in new_desc:
                                 new_desc = re.sub(r"\*\*감지 시간\*\*\s*:\s*.*", "**감지 시간** : (사라짐)", old_desc)
                             
-                            new_embed = discord.Embed(
-                                title="",
-                                description=new_desc,
-                                color=old_embed.color
-                            )
+                            new_embed = discord.Embed(title="", description=new_desc, color=old_embed.color)
                             await sent_message.edit(content=sent_message.content, embed=new_embed)
                     except Exception as e:
-                        print(f"상인 메시지 자동 만료 처리 중 오류: {e}")
+                        print(f"상인 만료 오류: {e}")
+                    finally:
+                        if signature in ACTIVE_BIOME_SIGNATURES:
+                            del ACTIVE_BIOME_SIGNATURES[signature]
 
                 bot.loop.create_task(expire_merchant())
             return
-
-    end_pattern = r"Biome\s+Ended|Ended|Strange\s+Controller\s+was\s+used|Biome\s+Randomizer\s+was\s+used"
     
     if re.search(end_pattern, clean_text, re.IGNORECASE):
         tracking_key = (channel_id_str, webhook_author_name or (roblox_username.lower() if roblox_username else None))
@@ -559,45 +520,29 @@ async def process_macro_message(message):
                     if "(사라짐)" not in new_desc:
                         new_desc = re.sub(r"\*\*감지 시간\*\*\s*:\s*.*", "**감지 시간** : (사라짐)", old_desc)
                     
-                    new_embed = discord.Embed(
-                        title="",
-                        description=new_desc,
-                        color=old_embed.color
-                    )
+                    new_embed = discord.Embed(title="", description=new_desc, color=old_embed.color)
                     await sent_msg.edit(content=sent_msg.content, embed=new_embed)
             except Exception as e:
-                print(f"메시지 수정 중 오류 발생: {e}")
+                print(f"메시지 수정 오류: {e}")
             
             del ACTIVE_BIOME_MESSAGES[tracking_key]
+        
+        # 시그니처 정리
+        keys_to_del = [k for k in ACTIVE_BIOME_SIGNATURES if k[0] == tracking_key_base]
+        for k in keys_to_del:
+            del ACTIVE_BIOME_SIGNATURES[k]
         return
 
     if not re.search(r"Biome\s+Started", clean_text, re.IGNORECASE):
         return
 
-    biome_name = None
-    match = re.search(r"Biome\s+Started\s*[-–—:]\s*([^\n\r]+)", clean_text, re.IGNORECASE)
-    if match:
-        biome_name = match.group(1).strip()
-
-    if not biome_name:
-        biome_name = "Unknown"
-    else:
-        biome_name = biome_name.upper()
+    biome_name = biome_match.group(1).strip().upper() if biome_match else "UNKNOWN"
 
     exclude_biomes = ["normal"]
     if biome_name.lower() in exclude_biomes:
         return
 
     biome_lower = biome_name.lower()
-
-    # 10초 도배 방지 쿨타임 적용 (모든 툴 공통)
-    identifier = webhook_author_name or roblox_username or "unknown"
-    alert_key = (channel_id_str, identifier, biome_lower)
-    current_time = time.time()
-    if alert_key in RECENT_ALERTS and current_time - RECENT_ALERTS[alert_key] < 10:
-        return
-    RECENT_ALERTS[alert_key] = current_time
-
     role_to_mention = None
 
     rare_group = ["dreamspace", "glitch", "cyberspace"]
@@ -622,10 +567,6 @@ async def process_macro_message(message):
             embed_color = color_val
             break
 
-    session_match = re.search(r"(?:Session\s+Time|Uptime)\s*:\s*([^\n\r]+)", clean_text, re.IGNORECASE)
-    raw_session = session_match.group(1).strip() if session_match else "4h 34m"
-    session_duration = format_session_time(raw_session)
-
     msg_timestamp = int(message.created_at.timestamp())
     dynamic_time_str = f"<t:{msg_timestamp}:R>"
 
@@ -636,31 +577,22 @@ async def process_macro_message(message):
         f"**서버 시간** : {session_duration}"
     )
 
-    new_embed = discord.Embed(
-        title="",
-        description=embed_description,
-        color=embed_color
-    )
-
+    new_embed = discord.Embed(title="", description=embed_description, color=embed_color)
     view = BiomeControlView(user_private_url)
 
     target_channel = None
-
     if biome_lower in rare_group:
         cursor.execute("SELECT channel_id FROM rare_channel LIMIT 1")
         rare_row = cursor.fetchone()
-        if rare_row:
-            target_channel = bot.get_channel(int(rare_row[0]))
+        if rare_row: target_channel = bot.get_channel(int(rare_row[0]))
     elif biome_lower in event_group:
         cursor.execute("SELECT channel_id FROM event_channel LIMIT 1")
         event_row = cursor.fetchone()
-        if event_row:
-            target_channel = bot.get_channel(int(event_row[0]))
+        if event_row: target_channel = bot.get_channel(int(event_row[0]))
     else:
         cursor.execute("SELECT channel_id FROM output_channel LIMIT 1")
         output_row = cursor.fetchone()
-        if output_row:
-            target_channel = bot.get_channel(int(output_row[0]))
+        if output_row: target_channel = bot.get_channel(int(output_row[0]))
 
     if target_channel:
         sent_message = await target_channel.send(content=mention_text, embed=new_embed, view=view)
@@ -673,14 +605,14 @@ async def on_message(message):
     try:
         await process_macro_message(message)
     except Exception as e:
-        print(f"매크로 메시지 처리 중 오류 발생: {e}")
+        print(f"메시지 처리 오류: {e}")
 
 @bot.event
 async def on_message_edit(before, after):
     try:
         await process_macro_message(after)
     except Exception as e:
-        print(f"매크로 메시지 수정 처리 중 오류 발생: {e}")
+        print(f"메시지 수정 처리 오류: {e}")
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 if TOKEN:
