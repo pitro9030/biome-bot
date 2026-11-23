@@ -31,6 +31,7 @@ cursor.execute("CREATE TABLE IF NOT EXISTS event_channel (channel_id TEXT)")
 cursor.execute("CREATE TABLE IF NOT EXISTS jester_channel (channel_id TEXT)")
 cursor.execute("CREATE TABLE IF NOT EXISTS mari_channel (channel_id TEXT)")
 cursor.execute("CREATE TABLE IF NOT EXISTS user_links (discord_id INTEGER PRIMARY KEY, roblox_name TEXT, server_url TEXT)")
+cursor.execute("CREATE TABLE IF NOT EXISTS acrux_user_links (discord_id INTEGER PRIMARY KEY, roblox_name TEXT, webhook_name TEXT, server_url TEXT)")
 conn.commit()
 
 ACTIVE_BIOME_MESSAGES = {}
@@ -106,6 +107,41 @@ def has_allowed_role():
         return False
     return app_commands.check(predicate)
 
+# [수정] /도움말 명령어
+@bot.tree.command(name="도움말", description="봇에서 사용 가능한 명령어와 안내를 확인합니다.")
+async def 도움말_command(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🤖 매크로 감지 봇 도움말",
+        description="바이옴 및 상인 감지 봇의 명령어 안내입니다.",
+        color=0x00A2FF
+    )
+    
+    embed.add_field(
+        name="**🔗 일반 유저 [링크 등록] 명령어**",
+        value=(
+            "• `/링크등록 [로블록스닉네임] [서버링크]`\n"
+            "  -> 일반 매크로 툴을 사용하는 유저용 연동 명령어\n"
+            "• `/아크록스링크등록 [로블록스닉네임] [웹훅봇닉네임] [서버링크]`\n"
+            "  -> **아크록스(Acrux Mobile)** 유저 전용 연동 명령어"
+        ),
+        inline=False
+    )
+    
+    embed.add_field(
+        name="**🛠️ 권한 필요 명령어**",
+        value=(
+            "• `/채널등록` : 스태프 전용 (감지 채널 등록)\n"
+            "• `/출력방등록` : 오너 전용 (일반 알림 방)\n"
+            "• `/레어방등록` : 오너 전용 (특수 바이옴 방)\n"
+            "• `/이벤트방등록` : 오너 전용 (이벤트 바이옴 방)\n"
+            "• `/제스터방등록` : 오너 전용 (제스터 상인 방)\n"
+            "• `/마리방등록` : 오너 전용 (마리 상인 방)"
+        ),
+        inline=False
+    )
+    
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
 @bot.tree.command(name="채널등록", description="현재 채널을 매크로 감지 채널로 등록합니다.")
 @has_allowed_role()
 async def 채널등록(interaction: discord.Interaction):
@@ -114,7 +150,7 @@ async def 채널등록(interaction: discord.Interaction):
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **매크로 감지 채널**로 등록되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="출력방등록", description="현재 채널을 일반 알림 출력방으로 설정합니다.")
+@bot.tree.command(name="출력방등록", description="현재 채널을 일반 바이옴 알림 출력방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def 출력방등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
@@ -123,14 +159,14 @@ async def 출력방등록(interaction: discord.Interaction):
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **일반 알림 출력방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="rare방등록", description="현재 채널을 특수 바이옴 전용 방으로 설정합니다.")
+@bot.tree.command(name="레어방등록", description="현재 채널을 특수 바이옴 출력방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
 async def rare방등록(interaction: discord.Interaction):
     channel_id = str(interaction.channel.id)
     cursor.execute("DELETE FROM rare_channel")
     cursor.execute("INSERT INTO rare_channel (channel_id) VALUES (?)", (channel_id,))
     conn.commit()
-    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **특수 바이옴 전용 방**으로 설정되었습니다!", ephemeral=True)
+    await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **특수 바이옴 출력방**으로 설정되었습니다!", ephemeral=True)
 
 @bot.tree.command(name="이벤트방등록", description="현재 채널을 이벤트 바이옴 전용 방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
@@ -159,7 +195,7 @@ async def 마리방등록(interaction: discord.Interaction):
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **마리 상인 전용 방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="링크등록", description="로블록스 닉네임과 비공개 서버 링크를 연동합니다.")
+@bot.tree.command(name="링크등록", description="[일반 사용자] 로블록스 닉네임과 비공개 서버 링크를 연동합니다.")
 @app_commands.describe(roblox_name="로블록스 닉네임", url="비공개 서버 링크 URL")
 async def 링크등록(interaction: discord.Interaction, roblox_name: str, url: str):
     await interaction.response.defer(ephemeral=True)
@@ -171,10 +207,35 @@ async def 링크등록(interaction: discord.Interaction, roblox_name: str, url: 
         cursor.execute("DELETE FROM user_links WHERE discord_id = ? OR LOWER(TRIM(roblox_name)) = LOWER(?)", (discord_id, clean_name))
         cursor.execute("INSERT INTO user_links (discord_id, roblox_name, server_url) VALUES (?, ?, ?)", (discord_id, clean_name, clean_url))
         conn.commit()
-        await interaction.followup.send(f"✅ **{clean_name}**님의 서버 링크와 디스코드 계정({interaction.user.mention})이 성공적으로 연동되었습니다!", ephemeral=True)
+        await interaction.followup.send(f"✅ **{clean_name}**님의 비공개 서버 링크와 디스코드 계정({interaction.user.mention})이 성공적으로 연동되었습니다!", ephemeral=True)
     except Exception as e:
         print(f"링크등록 DB 오류: {e}")
         await interaction.followup.send(f"❌ 링크 등록 중 오류가 발생했습니다: {e}", ephemeral=True)
+
+@bot.tree.command(name="아크록스링크등록", description="[아크록스 유저 전용] 로블록스 닉네임, 웹훅 봇 닉네임, 서버 링크를 연동합니다.")
+@app_commands.describe(roblox_name="실제 로블록스 닉네임 (디플닉X)", webhook_name="웹훅에 표시되는 봇 닉네임", url="비공개 서버 링크 URL")
+async def 아크록스링크등록(interaction: discord.Interaction, roblox_name: str, webhook_name: str, url: str):
+    await interaction.response.defer(ephemeral=True)
+    discord_id = interaction.user.id
+    clean_roblox = roblox_name.strip()
+    clean_webhook = webhook_name.strip()
+    clean_url = url.strip()
+
+    try:
+        cursor.execute("DELETE FROM acrux_user_links WHERE discord_id = ? OR LOWER(TRIM(webhook_name)) = LOWER(?)", (discord_id, clean_webhook))
+        cursor.execute("INSERT INTO acrux_user_links (discord_id, roblox_name, webhook_name, server_url) VALUES (?, ?, ?, ?)", 
+                       (discord_id, clean_roblox, clean_webhook, clean_url))
+        conn.commit()
+        await interaction.followup.send(
+            f"✅ **[아크록스 연동 완료]**\n"
+            f"- 디스코드 계정: {interaction.user.mention}\n"
+            f"- 실제 로블록스: **{clean_roblox}**\n"
+            f"- 웹훅 닉네임: **{clean_webhook}**", 
+            ephemeral=True
+        )
+    except Exception as e:
+        print(f"아크록스 링크등록 DB 오류: {e}")
+        await interaction.followup.send(f"❌ 아크록스 링크 등록 중 오류가 발생했습니다: {e}", ephemeral=True)
 
 class BiomeControlView(discord.ui.View):
     def __init__(self, server_url: str):
@@ -301,16 +362,23 @@ def format_session_time(raw_time: str) -> str:
         seconds = total_seconds % 60
         return f"{hours}h {minutes}m {seconds}s"
 
-def get_user_link_info(roblox_username: str):
-    if not roblox_username:
-        return "@알수없는-사용자", "https://discord.gg/기본링크"
-    
-    cursor.execute("SELECT discord_id, server_url FROM user_links WHERE LOWER(TRIM(roblox_name)) = LOWER(?)", (roblox_username.strip(),))
-    result = cursor.fetchone()
-    if result:
-        discord_id, server_url = result[0], result[1]
-        owner_display = f"<@{discord_id}>" if discord_id else "@알수없는-사용자"
-        return owner_display, server_url
+def get_user_link_info(roblox_username: str, webhook_author_name: str = None):
+    if webhook_author_name:
+        cursor.execute("SELECT discord_id, roblox_name, server_url FROM acrux_user_links WHERE LOWER(TRIM(webhook_name)) = LOWER(?)", (webhook_author_name.strip(),))
+        result = cursor.fetchone()
+        if result:
+            discord_id, actual_roblox_name, server_url = result[0], result[1], result[2]
+            owner_display = f"<@{discord_id}>" if discord_id else "@알수없는-사용자"
+            return owner_display, server_url
+
+    if roblox_username:
+        cursor.execute("SELECT discord_id, server_url FROM user_links WHERE LOWER(TRIM(roblox_name)) = LOWER(?)", (roblox_username.strip(),))
+        result = cursor.fetchone()
+        if result:
+            discord_id, server_url = result[0], result[1]
+            owner_display = f"<@{discord_id}>" if discord_id else "@알수없는-사용자"
+            return owner_display, server_url
+
     return "@알수없는-사용자", "https://discord.gg/기본링크"
 
 async def process_macro_message(message):
@@ -327,25 +395,14 @@ async def process_macro_message(message):
 
     clean_text = re.sub(r"[*#>`]", "", full_text)
 
-    # 1. 일반적인 Account : 닉네임 형식 탐색
     account_match = re.search(r"Account\s*:\s*([^\n\r]+)", clean_text, re.IGNORECASE)
     roblox_username = account_match.group(1).strip() if account_match else None
 
-    # 2. 로블록스 프로필 링크 형태 탐색 (마크다운 또는 일반 URL)
-    if not roblox_username:
-        profile_match = re.search(r"roblox\.com/users/(\d+)/profile", full_text, re.IGNORECASE)
-        if not profile_match:
-            profile_match = re.search(r"\[([^\]]+)\]\(https?://(?:www\.)?roblox\.com/users/\d+/profile\)", full_text, re.IGNORECASE)
-            if profile_match:
-                roblox_username = profile_match.group(1).strip()
+    webhook_author_name = None
+    if message.webhook_id and message.author and message.author.name:
+        if "acrux" not in message.author.name.lower():
+            webhook_author_name = message.author.name.strip()
 
-    # 3. 최후의 보루: 웹훅 작성자 이름 활용 (단, Acrux 등 시스템 이름이 아닐 때만)
-    if not roblox_username and message.webhook_id:
-        if message.author and message.author.name:
-            if "acrux" not in message.author.name.lower():
-                roblox_username = message.author.name
-
-    # 상인 감지 로직
     merchant_match = re.search(r"Merchant\s+Arrived\s*[-–—:]\s*([^\n\r]+)", clean_text, re.IGNORECASE)
     if merchant_match:
         raw_merchant = merchant_match.group(1).strip().lower()
@@ -365,7 +422,7 @@ async def process_macro_message(message):
 
         if merchant_name:
             mention_text = f"<@&{role_to_mention}>" if role_to_mention and role_to_mention.isdigit() else ""
-            owner_display, user_private_url = get_user_link_info(roblox_username)
+            owner_display, user_private_url = get_user_link_info(roblox_username, webhook_author_name)
 
             embed_color = BIOME_COLORS.get(merchant_name.lower(), 0x00A2FF)
 
@@ -432,7 +489,7 @@ async def process_macro_message(message):
     end_pattern = r"Biome\s+Ended|Ended|Strange\s+Controller\s+was\s+used|Biome\s+Randomizer\s+was\s+used"
     
     if re.search(end_pattern, clean_text, re.IGNORECASE):
-        tracking_key = (channel_id_str, roblox_username.lower() if roblox_username else None)
+        tracking_key = (channel_id_str, webhook_author_name or (roblox_username.lower() if roblox_username else None))
         if tracking_key in ACTIVE_BIOME_MESSAGES:
             sent_msg = ACTIVE_BIOME_MESSAGES[tracking_key]
             try:
@@ -490,7 +547,7 @@ async def process_macro_message(message):
                 break
 
     mention_text = f"<@&{role_to_mention}>" if role_to_mention and role_to_mention.isdigit() else ""
-    owner_display, user_private_url = get_user_link_info(roblox_username)
+    owner_display, user_private_url = get_user_link_info(roblox_username, webhook_author_name)
 
     embed_color = 0x00A2FF
     for key, color_val in BIOME_COLORS.items():
@@ -540,8 +597,9 @@ async def process_macro_message(message):
 
     if target_channel:
         sent_message = await target_channel.send(content=mention_text, embed=new_embed, view=view)
-        if roblox_username:
-            ACTIVE_BIOME_MESSAGES[(channel_id_str, roblox_username.lower())] = sent_message
+        tracking_key = webhook_author_name or (roblox_username.lower() if roblox_username else None)
+        if tracking_key:
+            ACTIVE_BIOME_MESSAGES[(channel_id_str, tracking_key)] = sent_message
 
 @bot.event
 async def on_message(message):
