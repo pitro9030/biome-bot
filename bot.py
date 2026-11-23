@@ -48,6 +48,7 @@ ROLE_SPECIAL_GROUP_2 = "1566090108170670342"
 ROLE_JESTER = "1562830501461631016"
 ROLE_MARI = "1562830587549712414"
 
+# 🔑 /채널등록 및 /채널삭제 명령어를 허용할 디스코드 역할 ID
 ALLOWED_CHANNEL_ROLE_ID = 1562649163290771547
 
 BIOME_ROLE_CONFIG = {
@@ -99,6 +100,7 @@ async def on_ready():
     print(f"현재 등록된 감지 채널 ID 목록: {saved_sources}")
     print("----------------------------------------")
 
+# 🔒 지정된 역할만 특정 명령어를 사용할 수 있도록 검사하는 함수
 def has_allowed_role():
     async def predicate(interaction: discord.Interaction):
         role = interaction.guild.get_role(ALLOWED_CHANNEL_ROLE_ID)
@@ -111,17 +113,17 @@ def has_allowed_role():
 @bot.tree.command(name="도움말", description="봇에서 사용 가능한 명령어와 안내를 확인합니다.")
 async def 도움말_command(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="🤖 밤크로 도움말",
-        description="바이옴 및 상인을 감지하는 밤크로 명령어 안내입니다.",
+        title="🤖 밤크로 봇 도움말",
+        description="밤크로 명령어 안내입니다.",
         color=0x00A2FF
     )
     
     embed.add_field(
-        name="🔗 유저 링크 등록 명령어",
+        name="🔗 유저 링크 관리 명령어",
         value=(
             "• `/링크등록 [로블록스닉네임] [서버링크]`\n"
             "  -> 일반 매크로 툴을 사용하는 유저용 연동 명령어\n"
-            "• `/아크록스링크등록 [로블록스닉네임] [웹훅봇닉네임] [서버링크]`\n"
+            "• `/아크링크등록 [로블록스닉네임] [웹훅봇닉네임] [서버링크]`\n"
             "  -> **아크록스(Acrux Mobile)** 유저 전용 연동 명령어\n"
             "• `/링크삭제`\n"
             "  -> 본인이 등록한 모든 서버 링크 연동 데이터 삭제"
@@ -133,6 +135,7 @@ async def 도움말_command(interaction: discord.Interaction):
         name="🛠️ 권한 필요 명령어",
         value=(
             "• `/채널등록` : 스태프 전용 (감지 채널 등록)\n"
+            "• `/채널삭제` : 스태프 전용 (현재 채널 감지 해제)\n"
             "• `/출력방등록` : 관리자 전용 (일반 알림 방)\n"
             "• `/레어방등록` : 관리자 전용 (특수 바이옴 방)\n"
             "• `/이벤트방등록` : 관리자 전용 (이벤트 바이옴 방)\n"
@@ -151,6 +154,20 @@ async def 채널등록(interaction: discord.Interaction):
     cursor.execute("INSERT OR IGNORE INTO source_channels (channel_id) VALUES (?)", (channel_id,))
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **매크로 감지 채널**로 등록되었습니다!", ephemeral=True)
+
+# [추가] 지정된 역할 보유자만 사용 가능한 채널 삭제 명령어
+@bot.tree.command(name="채널삭제", description="현재 채널을 매크로 감지 채널 목록에서 제거합니다.")
+@has_allowed_role()
+async def 채널삭제(interaction: discord.Interaction):
+    channel_id = str(interaction.channel.id)
+    cursor.execute("DELETE FROM source_channels WHERE channel_id = ?", (channel_id,))
+    deleted_rows = cursor.rowcount
+    conn.commit()
+
+    if deleted_rows > 0:
+        await interaction.response.send_message(f"🗑️ 이 채널({interaction.channel.mention})이 **매크로 감지 채널** 목록에서 제거되었습니다.", ephemeral=True)
+    else:
+        await interaction.response.send_message(f"ℹ️ 이 채널({interaction.channel.mention})은 감지 채널로 등록되어 있지 않습니다.", ephemeral=True)
 
 @bot.tree.command(name="출력방등록", description="현재 채널을 일반 알림 출력방으로 설정합니다.")
 @app_commands.checks.has_permissions(administrator=True)
@@ -214,7 +231,7 @@ async def 링크등록(interaction: discord.Interaction, roblox_name: str, url: 
         print(f"링크등록 DB 오류: {e}")
         await interaction.followup.send(f"❌ 링크 등록 중 오류가 발생했습니다: {e}", ephemeral=True)
 
-@bot.tree.command(name="아크록스링크등록", description="아크록스 유저 전용: 로블록스 닉네임, 웹훅 봇 닉네임, 서버 링크를 연동합니다.")
+@bot.tree.command(name="아크링크등록", description="[아크룩스 유저 전용] 로블록스 닉네임(디플닉 X), 웹훅 봇 닉네임, 서버 링크를 연동합니다.")
 @app_commands.describe(roblox_name="실제 로블록스 닉네임", webhook_name="웹훅에 표시되는 봇 닉네임", url="비공개 서버 링크 URL")
 async def 아크록스링크등록(interaction: discord.Interaction, roblox_name: str, webhook_name: str, url: str):
     await interaction.response.defer(ephemeral=True)
@@ -237,7 +254,7 @@ async def 아크록스링크등록(interaction: discord.Interaction, roblox_name
         )
     except Exception as e:
         print(f"아크록스 링크등록 DB 오류: {e}")
-        await interaction.followup.send(f"❌ 아크록스 링크 등록 중 오류가 발생했습니다: {e}", ephemeral=True)
+        await interaction.followup.send(f"❌ 아크룩스 링크 등록 중 오류가 발생했습니다: {e}", ephemeral=True)
 
 @bot.tree.command(name="링크삭제", description="본인이 등록한 비공개 서버 링크 연동 정보를 삭제합니다.")
 async def 링크삭제(interaction: discord.Interaction):
