@@ -5,6 +5,8 @@ import sqlite3
 import re
 import os
 import asyncio
+import time
+from datetime import datetime, timezone
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -35,9 +37,10 @@ cursor.execute("CREATE TABLE IF NOT EXISTS acrux_user_links (discord_id INTEGER 
 conn.commit()
 
 ACTIVE_BIOME_MESSAGES = {}
+RECENT_ALERTS = {}
 
 # ==========================================
-#  [설정 구역 절취]
+# ⚙️ [설정 구역] 
 # ==========================================
 ROLE_SPECIAL_GROUP_1 = "1562830412332404766"
 ROLE_SPECIAL_GROUP_2 = "1566090108170670342"
@@ -45,7 +48,6 @@ ROLE_SPECIAL_GROUP_2 = "1566090108170670342"
 ROLE_JESTER = "1562830501461631016"
 ROLE_MARI = "1562830587549712414"
 
-# /채널등록 명령어를 허용할 디스코드 역할 ID (마이너바보)
 ALLOWED_CHANNEL_ROLE_ID = 1562649163290771547
 
 BIOME_ROLE_CONFIG = {
@@ -87,7 +89,7 @@ BIOME_COLORS = {
 
 CUSTOM_CHECK_EMOJI = discord.PartialEmoji(name="check", id=1572517054693777588)
 CUSTOM_CROSS_EMOJI = discord.PartialEmoji(name="cross", id=1572517290111672431)
-# ==========================================절취
+# ==========================================
 
 @bot.event
 async def on_ready():
@@ -97,7 +99,6 @@ async def on_ready():
     print(f"현재 등록된 감지 채널 ID 목록: {saved_sources}")
     print("----------------------------------------")
 
-# 지정된 역할만 /채널등록을 사용할 수 있도록 검사하는 함수
 def has_allowed_role():
     async def predicate(interaction: discord.Interaction):
         role = interaction.guild.get_role(ALLOWED_CHANNEL_ROLE_ID)
@@ -107,20 +108,20 @@ def has_allowed_role():
         return False
     return app_commands.check(predicate)
 
-@bot.tree.command(name="도움말", description="밤크로에서 사용 가능한 명령어와 안내를 확인합니다.")
+@bot.tree.command(name="도움말", description="봇에서 사용 가능한 명령어와 안내를 확인합니다.")
 async def 도움말_command(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="밤크로 봇 도움말",
-        description="바이옴 및 상인 감지 봇의 명령어 안내입니다.",
+        title="🤖 밤크로 도움말",
+        description="바이옴 및 상인을 감지하는 밤크로 명령어 안내입니다.",
         color=0x00A2FF
     )
     
     embed.add_field(
-        name="**🔗 유저 링크 관리 명령어**",
+        name="🔗 유저 링크 등록 명령어",
         value=(
             "• `/링크등록 [로블록스닉네임] [서버링크]`\n"
             "  -> 일반 매크로 툴을 사용하는 유저용 연동 명령어\n"
-            "• `/아크록스링크등록 [로블록스닉네임] [웹훅 봇 닉네임] [서버링크]`\n"
+            "• `/아크록스링크등록 [로블록스닉네임] [웹훅봇닉네임] [서버링크]`\n"
             "  -> **아크록스(Acrux Mobile)** 유저 전용 연동 명령어\n"
             "• `/링크삭제`\n"
             "  -> 본인이 등록한 모든 서버 링크 연동 데이터 삭제"
@@ -129,15 +130,14 @@ async def 도움말_command(interaction: discord.Interaction):
     )
     
     embed.add_field(
-        name="**🛠️ 권한이 필요한 명령어**",
+        name="🛠️ 권한 필요 명령어",
         value=(
-            
             "• `/채널등록` : 스태프 전용 (감지 채널 등록)\n"
-            "• `/출력방등록` : 오너 전용 (일반 알림 방)\n"
-            "• `/레어방등록` : 오너 전용 (특수 바이옴 방)\n"
-            "• `/이벤트방등록` : 오너 전용 (이벤트 바이옴 방)\n"
-            "• `/제스터방등록` : 오너 전용 (제스터 상인 방)\n"
-            "• `/마리방등록` : 오너 전용 (마리 상인 방)"
+            "• `/출력방등록` : 관리자 전용 (일반 알림 방)\n"
+            "• `/레어방등록` : 관리자 전용 (특수 바이옴 방)\n"
+            "• `/이벤트방등록` : 관리자 전용 (이벤트 바이옴 방)\n"
+            "• `/제스터방등록` : 관리자 전용 (제스터 상인 방)\n"
+            "• `/마리방등록` : 관리자 전용 (마리 상인 방)"
         ),
         inline=False
     )
@@ -197,7 +197,7 @@ async def 마리방등록(interaction: discord.Interaction):
     conn.commit()
     await interaction.response.send_message(f"✅ 이 채널({interaction.channel.mention})이 **마리 상인 전용 방**으로 설정되었습니다!", ephemeral=True)
 
-@bot.tree.command(name="링크등록", description="로블록스 닉네임과 비공개 서버 링크를 연동합니다.")
+@bot.tree.command(name="링크등록", description="로블록스 닉네임(디플닉 X)과 비공개 서버 링크를 연동합니다.")
 @app_commands.describe(roblox_name="로블록스 닉네임", url="비공개 서버 링크 URL")
 async def 링크등록(interaction: discord.Interaction, roblox_name: str, url: str):
     await interaction.response.defer(ephemeral=True)
@@ -239,7 +239,6 @@ async def 아크록스링크등록(interaction: discord.Interaction, roblox_name
         print(f"아크록스 링크등록 DB 오류: {e}")
         await interaction.followup.send(f"❌ 아크록스 링크 등록 중 오류가 발생했습니다: {e}", ephemeral=True)
 
-# [추가] 본인의 링크 등록 데이터를 삭제하는 명령어
 @bot.tree.command(name="링크삭제", description="본인이 등록한 비공개 서버 링크 연동 정보를 삭제합니다.")
 async def 링크삭제(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
@@ -415,6 +414,11 @@ async def process_macro_message(message):
     if not cursor.fetchone():
         return
 
+    # 생성된 지 3분이 지난 오래된 지연 메시지는 모든 툴 공통으로 무시
+    message_age = (datetime.now(timezone.utc) - message.created_at).total_seconds()
+    if message_age > 180:
+        return
+
     full_text = extract_all_text(message)
     print(f"[감지된 원본 텍스트 - 채널 {channel_id_str}]\n{full_text}\n{'-'*30}")
 
@@ -446,6 +450,14 @@ async def process_macro_message(message):
             target_table = "mari_channel"
 
         if merchant_name:
+            # 10초 도배 방지 쿨타임 적용 (모든 툴 공통)
+            identifier = webhook_author_name or roblox_username or "unknown"
+            alert_key = (channel_id_str, identifier, merchant_name.lower())
+            current_time = time.time()
+            if alert_key in RECENT_ALERTS and current_time - RECENT_ALERTS[alert_key] < 10:
+                return
+            RECENT_ALERTS[alert_key] = current_time
+
             mention_text = f"<@&{role_to_mention}>" if role_to_mention and role_to_mention.isdigit() else ""
             owner_display, user_private_url = get_user_link_info(roblox_username, webhook_author_name)
 
@@ -556,6 +568,15 @@ async def process_macro_message(message):
         return
 
     biome_lower = biome_name.lower()
+
+    # 10초 도배 방지 쿨타임 적용 (모든 툴 공통)
+    identifier = webhook_author_name or roblox_username or "unknown"
+    alert_key = (channel_id_str, identifier, biome_lower)
+    current_time = time.time()
+    if alert_key in RECENT_ALERTS and current_time - RECENT_ALERTS[alert_key] < 10:
+        return
+    RECENT_ALERTS[alert_key] = current_time
+
     role_to_mention = None
 
     rare_group = ["dreamspace", "glitch", "cyberspace"]
