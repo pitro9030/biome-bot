@@ -203,7 +203,7 @@ async def 링크등록(interaction: discord.Interaction, roblox_name: str, url: 
     except Exception as e:
         await interaction.followup.send(f"❌ 오류 발생: {e}", ephemeral=True)
 
-@bot.tree.command(name="아크록스링크등록", description="아크 & 맥 & 마나스 유저 전용 연동")
+@bot.tree.command(name="아크록스링크등록", description="아크록스 유저 전용 연동")
 @app_commands.describe(roblox_name="실제 로블록스 닉네임", webhook_name="웹훅에 표시되는 봇 닉네임", url="비공개 서버 링크 URL")
 async def 아크록스링크등록(interaction: discord.Interaction, roblox_name: str, webhook_name: str, url: str):
     await interaction.response.defer(ephemeral=True)
@@ -217,7 +217,7 @@ async def 아크록스링크등록(interaction: discord.Interaction, roblox_name
         cursor.execute("INSERT INTO acrux_user_links (discord_id, roblox_name, webhook_name, server_url) VALUES (?, ?, ?, ?)", 
                        (discord_id, clean_roblox, clean_webhook, clean_url))
         conn.commit()
-        await interaction.followup.send(f"✅ **[연동 완료]** {clean_roblox} ({clean_webhook})", ephemeral=True)
+        await interaction.followup.send(f"✅ **[아크록스 연동 완료]** {clean_roblox} ({clean_webhook})", ephemeral=True)
     except Exception as e:
         await interaction.followup.send(f"❌ 오류 발생: {e}", ephemeral=True)
 
@@ -329,6 +329,9 @@ def extract_all_text(message) -> str:
 
 def format_session_time(raw_time: str) -> str:
     raw_time = raw_time.strip()
+    if raw_time == "감지 불가능 세션":
+        return raw_time
+
     total_seconds = 0
 
     hms_colon = re.search(r"^(\d+):(\d+):(\d+)$", raw_time)
@@ -423,13 +426,13 @@ async def process_macro_message(message):
     tracking_key = (channel_id_str, webhook_author_name or (roblox_username.lower() if roblox_username else None))
     tracking_key_base = webhook_author_name or (roblox_username.lower() if roblox_username else None)
 
-    # 🛠️ MMacro(Running, This server) 및 기존 형식을 모두 지원하도록 수정된 세션 시간 추출 패턴
+    # 세션 시간을 찾지 못했을 경우 "감지 불가능 세션"으로 설정
     session_match = re.search(
         r"(?:Session\s+Time|Uptime|Running|This\s+server)\s*[:\n\r]+\s*([^\n\r]+)", 
         clean_text, 
         re.IGNORECASE
     )
-    raw_session = session_match.group(1).strip() if session_match else "4h 34m"
+    raw_session = session_match.group(1).strip() if session_match else "감지 불가능 세션"
     session_duration = format_session_time(raw_session)
 
     detected_event_name = None
