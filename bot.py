@@ -426,6 +426,7 @@ async def process_macro_message(message):
     tracking_key = (channel_id_str, webhook_author_name or (roblox_username.lower() if roblox_username else None))
     tracking_key_base = webhook_author_name or (roblox_username.lower() if roblox_username else None)
 
+    # 세션 시간을 찾지 못했을 경우 "감지 불가능 세션"으로 설정
     session_match = re.search(
         r"(?:Session\s+Time|Uptime|Running|This\s+server)\s*[:\n\r]+\s*([^\n\r]+)", 
         clean_text, 
@@ -613,8 +614,8 @@ async def on_message_edit(before, after):
     except Exception as e:
         print(f"메시지 수정 처리 오류: {e}")
 
-# ==========================================
-# 🔑 토큰 설정 구역
-# ==========================================
-TOKEN = "여기에_본인의_디스코드_봇_토큰을_넣으세요"
-bot.run(TOKEN)
+TOKEN = os.getenv("DISCORD_TOKEN")
+if TOKEN:
+    bot.run(TOKEN)
+else:
+    print("❌ 오류: DISCORD_TOKEN 환경 변수가 설정되지 않았습니다.")
