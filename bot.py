@@ -410,7 +410,6 @@ async def process_macro_message(message):
 
     clean_text = re.sub(r"[*#>`]", "", full_text)
 
-    # 🛡️ 종료 패턴에 Biome Started - Normal 추가
     end_pattern = r"Biome\s+Ended|Ended|Strange\s+Controller\s+was\s+used|Biome\s+Randomizer\s+was\s+used|Biome\s+Started\s*[-–—:]\s*Normal"
     
     account_match = re.search(r"Account\s*:\s*([^\n\r]+)", clean_text, re.IGNORECASE)
@@ -424,7 +423,12 @@ async def process_macro_message(message):
     tracking_key = (channel_id_str, webhook_author_name or (roblox_username.lower() if roblox_username else None))
     tracking_key_base = webhook_author_name or (roblox_username.lower() if roblox_username else None)
 
-    session_match = re.search(r"(?:Session\s+Time|Uptime)\s*:\s*([^\n\r]+)", clean_text, re.IGNORECASE)
+    # 🛠️ MMacro(Running, This server) 및 기존 형식을 모두 지원하도록 수정된 세션 시간 추출 패턴
+    session_match = re.search(
+        r"(?:Session\s+Time|Uptime|Running|This\s+server)\s*[:\n\r]+\s*([^\n\r]+)", 
+        clean_text, 
+        re.IGNORECASE
+    )
     raw_session = session_match.group(1).strip() if session_match else "4h 34m"
     session_duration = format_session_time(raw_session)
 
@@ -445,7 +449,6 @@ async def process_macro_message(message):
                 return
             ACTIVE_BIOME_SIGNATURES[signature] = channel_id_str
 
-    # 새로운 시작/상인 로그(Normal 제외)가 들어왔을 때 기존 알림이 있다면 즉시 (사라짐) 처리
     if (merchant_match or biome_match) and not re.search(end_pattern, clean_text, re.IGNORECASE):
         if tracking_key in ACTIVE_BIOME_MESSAGES:
             old_msg = ACTIVE_BIOME_MESSAGES[tracking_key]
@@ -518,7 +521,6 @@ async def process_macro_message(message):
                 bot.loop.create_task(expire_merchant())
             return
     
-    # 종료 패턴(Biome Ended 또는 Biome Started - Normal 등) 감지 시 기존 알림을 (사라짐)으로 변경
     if re.search(end_pattern, clean_text, re.IGNORECASE):
         if tracking_key in ACTIVE_BIOME_MESSAGES:
             sent_msg = ACTIVE_BIOME_MESSAGES[tracking_key]
