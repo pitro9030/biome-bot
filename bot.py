@@ -119,7 +119,7 @@ async def 도움말_command(interaction: discord.Interaction):
         name="🔗 유저 링크 관리 명령어",
         value=(
             "• `/링크등록 [로블록스닉네임] [서버링크]`\n"
-            "• `/아크록스링크등록 [로블록스닉네임] [웹훅봇닉네임] [서버링크]`\n"
+            "• `/예외등록 [로블록스닉네임] [웹훅봇닉네임] [서버링크]`\n"
             "• `/링크삭제`"
         ),
         inline=False
@@ -203,9 +203,9 @@ async def 링크등록(interaction: discord.Interaction, roblox_name: str, url: 
     except Exception as e:
         await interaction.followup.send(f"❌ 오류 발생: {e}", ephemeral=True)
 
-@bot.tree.command(name="아크록스링크등록", description="아크록스 유저 전용 연동")
+@bot.tree.command(name="예외등록", description="아크 & 맥 & 마나스 유저 전용 연동")
 @app_commands.describe(roblox_name="실제 로블록스 닉네임", webhook_name="웹훅에 표시되는 봇 닉네임", url="비공개 서버 링크 URL")
-async def 아크록스링크등록(interaction: discord.Interaction, roblox_name: str, webhook_name: str, url: str):
+async def 예외등록(interaction: discord.Interaction, roblox_name: str, webhook_name: str, url: str):
     await interaction.response.defer(ephemeral=True)
     discord_id = interaction.user.id
     clean_roblox = roblox_name.strip()
@@ -217,7 +217,7 @@ async def 아크록스링크등록(interaction: discord.Interaction, roblox_name
         cursor.execute("INSERT INTO acrux_user_links (discord_id, roblox_name, webhook_name, server_url) VALUES (?, ?, ?, ?)", 
                        (discord_id, clean_roblox, clean_webhook, clean_url))
         conn.commit()
-        await interaction.followup.send(f"✅ **[아크록스 연동 완료]** {clean_roblox} ({clean_webhook})", ephemeral=True)
+        await interaction.followup.send(f"✅ **[링크 연동 완료]** {clean_roblox} ({clean_webhook})", ephemeral=True)
     except Exception as e:
         await interaction.followup.send(f"❌ 오류 발생: {e}", ephemeral=True)
 
